@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+CHAT.jsonl
+CHAT_SUMMARY.md
+*.egg-info/
+dist/
+build/
+.init-checkpoint.json
+.scrape-cache/
