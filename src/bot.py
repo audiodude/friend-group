@@ -91,6 +91,31 @@ class FriendGroup:
         self._processing_lock = asyncio.Lock()
         self._pending_mentions: list[PendingMention] = []
 
+    async def _send_messages(self, bot: FriendBot, name: str,
+                             messages: list[str],
+                             reply_to_message_id: int | None = None) -> list[ChatMessage]:
+        """Send one or more messages with natural delays between them.
+        Returns list of ChatMessages that were sent."""
+        sent_msgs = []
+        for i, text in enumerate(messages):
+            # First message gets reply_to, subsequent ones don't
+            reply_to = reply_to_message_id if i == 0 else None
+            sent = await bot.send_message(text, reply_to_message_id=reply_to)
+            if sent:
+                msg = ChatMessage(
+                    timestamp=time.time(),
+                    sender=name,
+                    text=text,
+                    message_id=sent.message_id,
+                    reply_to=reply_to or 0,
+                )
+                append_message(msg)
+                sent_msgs.append(msg)
+            # Delay between split messages (simulate typing)
+            if i < len(messages) - 1:
+                await asyncio.sleep(random.uniform(1.5, 4.0))
+        return sent_msgs
+
     async def setup(self):
         """Initialize all friend bots."""
         friend_names = get_friend_names()
@@ -194,20 +219,12 @@ class FriendGroup:
                     silence_minutes=silence_minutes,
                 )
 
-                if result and result.get("message"):
-                    # Random typing delay
+                if result and result.get("messages"):
                     await asyncio.sleep(random.randint(2, 10))
 
-                    sent = await bot.send_message(result["message"])
+                    sent = await self._send_messages(bot, name, result["messages"])
                     if sent:
-                        msg = ChatMessage(
-                            timestamp=time.time(),
-                            sender=name,
-                            text=result["message"],
-                            message_id=sent.message_id,
-                        )
-                        append_message(msg)
-                        logger.info(f"{name} initiated: {result['message'][:50]}...")
+                        logger.info(f"{name} initiated ({len(sent)} msgs): {sent[0].text[:50]}...")
 
             except Exception as e:
                 logger.exception(f"Error in initiation loop: {e}")
@@ -271,22 +288,14 @@ class FriendGroup:
                         friend_config=friend_config,
                     )
 
-                    if result and result.get("message"):
+                    if result and result.get("messages"):
                         await asyncio.sleep(random.randint(3, 15))
-                        sent = await bot.send_message(
-                            result["message"],
+                        sent = await self._send_messages(
+                            bot, mention.friend_name, result["messages"],
                             reply_to_message_id=mention.message_id,
                         )
                         if sent:
-                            msg = ChatMessage(
-                                timestamp=time.time(),
-                                sender=mention.friend_name,
-                                text=result["message"],
-                                message_id=sent.message_id,
-                                reply_to=mention.message_id,
-                            )
-                            append_message(msg)
-                            logger.info(f"{mention.friend_name} caught up: {result['message'][:50]}...")
+                            logger.info(f"{mention.friend_name} caught up ({len(sent)} msgs): {sent[0].text[:50]}...")
                     # Whether they responded or not, they "saw" it — remove from queue
 
                 self._pending_mentions = still_pending
@@ -390,24 +399,15 @@ class FriendGroup:
                 friend_config=friend_config,
             )
 
-            if result and result.get("message"):
-                # Simulate natural delay
+            if result and result.get("messages"):
                 delay = result.get("delay_seconds", 3)
                 await asyncio.sleep(delay)
 
                 reply_to = result.get("reply_to_message_id")
-                sent = await bot.send_message(result["message"], reply_to_message_id=reply_to)
-
+                sent = await self._send_messages(bot, name, result["messages"],
+                                                  reply_to_message_id=reply_to)
                 if sent:
-                    # Log the bot's response
-                    bot_msg = ChatMessage(
-                        timestamp=time.time(),
-                        sender=name,
-                        text=result["message"],
-                        message_id=sent.message_id,
-                    )
-                    append_message(bot_msg)
-                    logger.info(f"{name} responded: {result['message'][:50]}...")
+                    logger.info(f"{name} responded ({len(sent)} msgs): {sent[0].text[:50]}...")
 
         except Exception as e:
             logger.exception(f"Error in {name}'s response: {e}")

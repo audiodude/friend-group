@@ -48,11 +48,19 @@ Respond with a JSON object (no markdown fencing):
 
 {{
   "respond": true/false,
-  "message": "your message text" or null,
+  "messages": ["message 1", "message 2", ...] or null,
   "reply_to_message_id": message_id or null,
   "memory_update": "brief note" or null,
   "delay_seconds": 1-30
 }}
+
+"messages" is an ARRAY. Real people often split their thoughts across multiple texts:
+  - "oh man" / "that reminds me" / "did you see the thing about..."
+  - "lol" / "wait actually no"
+  - "yo" / "check this out"
+But don't force it. A single message is fine most of the time. Only split when it
+feels natural — like a new thought, a correction, or a reaction followed by a comment.
+Usually 1-2 messages, occasionally 3. Never more than 4.
 
 For "respond", consider: Is this relevant to you? Have you been talking a lot? Would you actually reply to this? Not every message needs a response.
 
@@ -133,8 +141,17 @@ async def think_and_respond(
     if result.get("memory_update"):
         _update_memory(friend_name, memory, result["memory_update"])
 
+    # Normalize messages — support both "message" (string) and "messages" (array)
+    messages = result.get("messages") or []
+    if not messages and result.get("message"):
+        messages = [result["message"]]
+    messages = [m for m in messages if m]
+
+    if not messages:
+        return None
+
     return {
-        "message": result.get("message", ""),
+        "messages": messages,
         "reply_to_message_id": result.get("reply_to_message_id"),
         "delay_seconds": max(1, min(30, result.get("delay_seconds", 3))),
     }
@@ -177,9 +194,11 @@ Respond with a JSON object (no markdown fencing):
 
 {{
   "send": true/false,
-  "message": "your message text" or null,
+  "messages": ["message 1", "message 2", ...] or null,
   "memory_update": "brief note" or null
 }}
+
+"messages" is an array — you can split into multiple texts if natural, but usually just 1.
 
 JSON only, nothing else."""
 
@@ -255,7 +274,12 @@ async def maybe_initiate(
     if result.get("memory_update"):
         _update_memory(friend_name, memory, result["memory_update"])
 
-    return {"message": result.get("message", "")}
+    messages = result.get("messages") or []
+    if not messages and result.get("message"):
+        messages = [result["message"]]
+    messages = [m for m in messages if m]
+
+    return {"messages": messages} if messages else None
 
 
 def _update_memory(friend_name: str, current_memory: str, new_note: str):
