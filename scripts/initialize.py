@@ -1910,7 +1910,7 @@ def create_friend_dir(friends_dir: Path, name: str, soul: str,
     (friend_dir / "MEMORY.md").write_text("# Memory\n")
 
     config = {
-        "timezone": candidate.get("timezone", "America/New_York"),
+        "timezone": candidate.get("timezone", "America/New_York").replace(" ", "_"),
         "schedule": {
             "wake_up": "08:00",
             "sleep_at": "23:00",

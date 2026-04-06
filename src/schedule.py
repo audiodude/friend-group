@@ -14,7 +14,8 @@ def get_availability(friend_config: dict) -> dict:
         - day_off: bool
         - responsiveness: float 0.0-1.0 (how likely to respond)
     """
-    tz = ZoneInfo(friend_config.get("timezone", "UTC"))
+    tz_key = friend_config.get("timezone", "UTC").replace(" ", "_")
+    tz = ZoneInfo(tz_key)
     now = datetime.now(tz)
     hour_min = now.strftime("%H:%M")
     weekday = now.weekday()
