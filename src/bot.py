@@ -406,9 +406,9 @@ class FriendGroup:
                 logger.info(f"{name}'s pending response cancelled — new message arrived")
         self._active_tasks.clear()
 
-        # Each friend independently decides whether to respond
+        # Determine which friends want to respond
+        responders = []
         for name, bot in self.bots.items():
-            # Don't respond to own messages
             if is_bot_message and bot.user_id == sender_id:
                 continue
 
@@ -416,12 +416,10 @@ class FriendGroup:
             by_name, by_at = self._is_mentioned(name, bot, message.text)
             mentioned = by_name or by_at
 
-            # Schedule gate — are they even "around" right now?
             engagement = self._get_engagement_modifier(name)
             if not should_respond(friend_config, is_bot_message=is_bot_message,
                                   mentioned=mentioned,
                                   engagement_modifier=engagement):
-                # If they were mentioned but unavailable, queue for later
                 if mentioned:
                     self._pending_mentions.append(PendingMention(
                         friend_name=name,
@@ -436,12 +434,17 @@ class FriendGroup:
                     logger.debug(f"{name} is unavailable (schedule/chance)")
                 continue
 
+            responders.append((name, bot, friend_config))
+
+        # All responders think concurrently, but send sequentially
+        if responders:
             task = asyncio.create_task(
-                self._friend_consider_response(
-                    name, bot, friend_config, sender_name, message.text, message.message_id
+                self._staggered_responses(
+                    responders, sender_name, message.text, message.message_id
                 )
             )
-            self._active_tasks[name] = task
+            for name, _, _ in responders:
+                self._active_tasks[name] = task
 
         # Periodically compact chat history
         chat_config = self.global_config.get("chat", {})
@@ -450,6 +453,92 @@ class FriendGroup:
             max_messages=chat_config.get("max_messages", 100),
             compact_to=chat_config.get("compact_to", 30),
         )
+
+    async def _staggered_responses(self, responders, sender, message, message_id):
+        """All bots think concurrently, but send one at a time with staggered delays.
+
+        After each bot sends, remaining bots get a fresh LLM call to reconsider
+        their response in light of what was just said.
+        """
+        try:
+            # Phase 1: Everyone thinks at once
+            think_tasks = {}
+            for name, bot, friend_config in responders:
+                think_tasks[name] = asyncio.create_task(
+                    think_and_respond(
+                        client=self.claude,
+                        model=self.model,
+                        friend_name=name,
+                        sender=sender,
+                        message=message,
+                        message_id=message_id,
+                        friend_config=friend_config,
+                    )
+                )
+
+            results = {}
+            for name, task in think_tasks.items():
+                try:
+                    results[name] = await task
+                except Exception as e:
+                    logger.exception(f"Error in {name}'s thinking: {e}")
+
+            # Phase 2: Send one at a time, shuffled for variety
+            send_order = list(responders)
+            random.shuffle(send_order)
+
+            someone_sent = False
+            for i, (name, bot, friend_config) in enumerate(send_order):
+                result = results.get(name)
+                if not result or not result.get("messages"):
+                    continue
+
+                # If someone already sent, reconsider with fresh context
+                if someone_sent:
+                    logger.info(f"{name} reconsidering after another bot responded...")
+                    try:
+                        result = await think_and_respond(
+                            client=self.claude,
+                            model=self.model,
+                            friend_name=name,
+                            sender=sender,
+                            message=message,
+                            message_id=message_id,
+                            friend_config=friend_config,
+                        )
+                    except Exception as e:
+                        logger.exception(f"Error in {name}'s reconsideration: {e}")
+                        continue
+                    if not result or not result.get("messages"):
+                        continue
+
+                # Stagger delay: first bot gets normal delay, subsequent get extra
+                delay = result.get("delay_seconds", 3)
+                if someone_sent:
+                    delay += random.uniform(3, 8)
+                await asyncio.sleep(delay)
+
+                # Prevent self-replies
+                reply_to = result.get("reply_to_message_id")
+                if reply_to:
+                    recent = load_messages(limit=50)
+                    for msg in recent:
+                        if msg.message_id == reply_to and msg.sender == name:
+                            reply_to = None
+                            break
+
+                sent = await self._send_messages(bot, name, result["messages"],
+                                                  reply_to_message_id=reply_to)
+                if sent:
+                    self._record_spoke(name)
+                    someone_sent = True
+                    logger.info(f"{name} responded ({len(sent)} msgs): {sent[0].text[:50]}...")
+
+        except asyncio.CancelledError:
+            logger.info("Staggered responses cancelled — new message arrived")
+        finally:
+            for name, _, _ in responders:
+                self._active_tasks.pop(name, None)
 
     async def _friend_consider_response(
         self, name: str, bot: FriendBot, friend_config: dict,
