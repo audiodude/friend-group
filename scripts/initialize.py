@@ -2473,13 +2473,9 @@ def main():
 
     cp = load_checkpoint()
 
-    # Detect completed setup: .env exists, friends exist, no in-progress checkpoint
+    # Detect completed setup: .env exists and friends exist
     existing_friends = get_existing_friend_names(paths["friends"])
-    setup_complete = (
-        paths["env"].exists()
-        and len(existing_friends) > 0
-        and cp["step"] == "start"
-    )
+    setup_complete = paths["env"].exists() and len(existing_friends) > 0
 
     if setup_complete:
         print(f"\n  Found {len(existing_friends)} friend(s): {', '.join(existing_friends)}")

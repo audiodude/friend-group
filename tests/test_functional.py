@@ -534,22 +534,14 @@ class TestSetupDetection:
     """Test that completed setup is detected for redeploy."""
 
     def test_detects_complete_setup(self, paths):
-        """With .env + friends + no checkpoint, setup is complete."""
-        # Create .env
+        """With .env + friends, setup is complete."""
         paths["env"].write_text("ANTHROPIC_API_KEY=sk-ant-test\n")
-        # Create a friend
         d = paths["friends"] / "casey"
         d.mkdir()
         (d / "SOUL.md").write_text("# Casey")
 
         existing = lib.get_existing_friend_names(paths["friends"])
-        cp = {"step": "start"}
-
-        setup_complete = (
-            paths["env"].exists()
-            and len(existing) > 0
-            and cp["step"] == "start"
-        )
+        setup_complete = paths["env"].exists() and len(existing) > 0
         assert setup_complete is True
 
     def test_incomplete_without_friends(self, paths):
@@ -557,13 +549,7 @@ class TestSetupDetection:
         paths["env"].write_text("ANTHROPIC_API_KEY=sk-ant-test\n")
 
         existing = lib.get_existing_friend_names(paths["friends"])
-        cp = {"step": "start"}
-
-        setup_complete = (
-            paths["env"].exists()
-            and len(existing) > 0
-            and cp["step"] == "start"
-        )
+        setup_complete = paths["env"].exists() and len(existing) > 0
         assert setup_complete is False
 
     def test_incomplete_without_env(self, paths):
@@ -575,28 +561,20 @@ class TestSetupDetection:
         (d / "SOUL.md").write_text("# Casey")
 
         existing = lib.get_existing_friend_names(paths["friends"])
-        cp = {"step": "start"}
-
-        setup_complete = (
-            paths["env"].exists()
-            and len(existing) > 0
-            and cp["step"] == "start"
-        )
+        setup_complete = paths["env"].exists() and len(existing) > 0
         assert setup_complete is False
 
-    def test_incomplete_with_active_checkpoint(self, paths):
-        """With everything but an in-progress checkpoint, not complete."""
+    def test_complete_even_with_stale_checkpoint(self, paths):
+        """With everything including a stale checkpoint, still detected as complete."""
         paths["env"].write_text("ANTHROPIC_API_KEY=sk-ant-test\n")
         d = paths["friends"] / "casey"
         d.mkdir()
         (d / "SOUL.md").write_text("# Casey")
 
         existing = lib.get_existing_friend_names(paths["friends"])
-        cp = {"step": "telegram_bots"}  # mid-setup
 
         setup_complete = (
             paths["env"].exists()
             and len(existing) > 0
-            and cp["step"] == "start"
         )
-        assert setup_complete is False
+        assert setup_complete is True
