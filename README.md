@@ -58,7 +58,6 @@ Everything lives in `~/.sudomake-friends/`:
 ```
 ~/.sudomake-friends/
   .env               # API keys and bot tokens
-  PROFILE.md         # your compiled profile (used to generate friends)
   friends/<name>/
     SOUL.md           # personality — edit freely
     MEMORY.md         # learned facts — auto-updated

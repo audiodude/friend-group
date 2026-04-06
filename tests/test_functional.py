@@ -120,20 +120,6 @@ class TestPlatformCache:
         assert isinstance(result, str)
 
 
-# ─── Profile system ──────────────────────────────────────────────────────────
-
-class TestProfile:
-    """Tests 16-17: Profile save/load."""
-
-    def test_save_and_load_roundtrip(self, paths):
-        lib.save_profile(paths, "Test profile content")
-        loaded = lib.load_or_create_profile(None, paths)
-        assert loaded == "Test profile content"
-
-    def test_no_profile_returns_none(self, paths):
-        result = lib.load_or_create_profile(None, paths)
-        assert result is None
-
 
 # ─── Friend directory creation ────────────────────────────────────────────────
 

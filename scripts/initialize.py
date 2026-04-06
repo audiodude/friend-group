@@ -1114,7 +1114,6 @@ def get_paths(root: Path) -> dict:
         "root": root,
         "friends": root / "friends",
         "env": root / ".env",
-        "profile": root / "PROFILE.md",
         "scrape_cache": root / ".scrape-cache",
     }
 
@@ -1290,16 +1289,6 @@ Write the profile directly, no preamble:"""
     )
     return response.content[0].text.strip()
 
-
-def load_or_create_profile(client, paths: dict) -> str | None:
-    """Load existing profile or return None if it needs to be created."""
-    if paths["profile"].exists():
-        return paths["profile"].read_text()
-    return None
-
-
-def save_profile(paths: dict, profile: str):
-    paths["profile"].write_text(profile)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2074,16 +2063,13 @@ def step_anthropic_key(cp, paths):
 
 def step_user_profile(cp, paths):
     """Collect or load the user profile."""
-    profile = load_or_create_profile(get_client(paths["env"]), paths)
-    if profile:
-        print(f"\n  User profile found ({len(profile)} chars).")
+    if cp.get("user_context"):
+        print(f"\n  Profile already compiled ({len(cp['user_context'])} chars).")
         redo = input("  Create a new profile? [y/N]: ").strip().lower()
         if redo != "y":
-            cp["user_context"] = profile
             cp["step"] = "select_friends"
             save_checkpoint(cp)
             return cp
-        paths["profile"].unlink()
 
     client = get_client(paths["env"])
     if not client:
@@ -2103,12 +2089,11 @@ def step_user_profile(cp, paths):
 
     print("\n  Compiling your profile...")
     profile = compile_profile(client, raw_context)
-    save_profile(paths, profile)
-    print(f"  Saved to PROFILE.md ({len(profile)} chars)")
 
     cp["user_context"] = profile
     cp["step"] = "select_friends"
     save_checkpoint(cp)
+    print("  Done.")
     return cp
 
 
