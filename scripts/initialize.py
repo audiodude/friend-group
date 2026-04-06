@@ -13,19 +13,22 @@ Or locally:    uv run scripts/initialize.py
 """
 
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_URL = "https://github.com/audiodude/friend-group.git"
 
 
 # ─── Bootstrap ────────────────────────────────────────────────────────────────
-# When run via `uv run https://...`, this script is downloaded alone.
-# We need the repo for lib.py and platforms/. If we detect we're running
-# outside the project, clone it and re-exec the repo's copy of this script.
+# The script works in a staging directory (temp or existing project).
+# No files are written to the user's filesystem until they choose to
+# deploy or explicitly save the project.
 
 def _find_project() -> Path | None:
+    """Check if we're already inside a friend-group project."""
     cwd = Path.cwd()
     if (cwd / "src" / "main.py").exists() and (cwd / "friends").exists():
         return cwd
@@ -34,30 +37,39 @@ def _find_project() -> Path | None:
     return None
 
 
-def _bootstrap_and_reexec():
-    """Clone the repo and re-exec the repo's copy of this script."""
-    target = Path.cwd() / "friend-group"
-    if not target.exists():
-        print(f"\n  Cloning friend-group into {target}...")
+def _bootstrap() -> tuple[Path, bool]:
+    """Ensure we have a project directory. Returns (path, is_temp).
+
+    If already in a project dir, uses that (is_temp=False).
+    Otherwise clones to a temp dir (is_temp=True).
+    """
+    existing = _find_project()
+    if existing:
+        return existing, False
+
+    # Clone to a persistent temp location (survives checkpoint/resume)
+    staging = Path(tempfile.gettempdir()) / "friend-group-setup"
+    if not (staging / "src" / "main.py").exists():
+        print(f"\n  Setting up workspace...")
+        if staging.exists():
+            shutil.rmtree(staging)
         result = subprocess.run(
-            ["git", "clone", REPO_URL, str(target)],
+            ["git", "clone", REPO_URL, str(staging)],
             capture_output=True, text=True,
         )
         if result.returncode != 0:
-            print(f"  Error cloning: {result.stderr}")
+            print(f"  Error: {result.stderr}")
             sys.exit(1)
-        print("  Done.")
+        print("  Ready.")
+    return staging, True
 
-    # Re-exec the repo's copy so all imports work naturally
-    repo_script = target / "scripts" / "initialize.py"
+
+_project, _is_temp = _bootstrap()
+
+# Re-exec the repo's copy if we're running from a URL download
+if not (Path(__file__).resolve().parent / "lib.py").exists():
+    repo_script = _project / "scripts" / "initialize.py"
     os.execv(sys.executable, [sys.executable, str(repo_script)] + sys.argv[1:])
-
-
-# If lib.py isn't importable, we need to bootstrap
-_project = _find_project()
-if _project is None:
-    _bootstrap_and_reexec()
-    # never reaches here
 
 sys.path.insert(0, str(_project / "scripts"))
 
@@ -361,6 +373,48 @@ def step_telegram_group(cp, paths):
         sys.exit(0)
 
 
+def _copy_project(src: Path, dest: Path):
+    """Copy the project to a user-chosen location."""
+    if dest.exists():
+        overwrite = input(f"  {dest} exists. Overwrite? [y/N]: ").strip().lower()
+        if overwrite != "y":
+            return False
+        shutil.rmtree(dest)
+    shutil.copytree(src, dest, ignore=shutil.ignore_patterns(
+        "__pycache__", ".scrape-cache", ".init-checkpoint.json",
+    ))
+    return True
+
+
+def _ask_save_location(root: Path) -> Path | None:
+    """Ask the user where to save the project. Returns path or None."""
+    default = Path.cwd() / "friend-group"
+    print(f"\n  Where would you like to save your friend group project?")
+
+    import readline
+    def _prefill():
+        readline.insert_text(str(default))
+        readline.redisplay()
+    readline.set_pre_input_hook(_prefill)
+    dest_str = input("  Path: ").strip()
+    readline.set_pre_input_hook(None)
+
+    if not dest_str:
+        return None
+
+    dest = Path(dest_str).expanduser().resolve()
+
+    # Validate parent exists
+    if not dest.parent.exists():
+        print(f"  Parent directory {dest.parent} doesn't exist.")
+        return None
+
+    if _copy_project(root, dest):
+        print(f"  Saved to {dest}")
+        return dest
+    return None
+
+
 def step_deploy(cp, paths):
     root = paths["root"]
     print()
@@ -380,7 +434,6 @@ def step_deploy(cp, paths):
 
     if choice == "1":
         print("\n  Starting with docker compose...")
-        # Try v2 plugin, then standalone
         for cmd in [["docker", "compose"], ["docker-compose"]]:
             r = subprocess.run(cmd + ["version"], capture_output=True, text=True)
             if r.returncode == 0:
@@ -388,7 +441,8 @@ def step_deploy(cp, paths):
                                    cwd=str(root), capture_output=True, text=True)
                 if r.returncode == 0:
                     compose_cmd = " ".join(cmd)
-                    print(f"  Running! Logs: cd {root} && {compose_cmd} logs -f")
+                    print(f"  Running! Check logs with:")
+                    print(f"    {compose_cmd} -f {root}/docker-compose.yml logs -f")
                 else:
                     print(f"  Error: {r.stderr[:200]}")
                 break
@@ -397,45 +451,52 @@ def step_deploy(cp, paths):
             print("    Arch: sudo pacman -S docker-compose")
             print("    Ubuntu: sudo apt install docker-compose-v2")
             print("    Mac: included with Docker Desktop")
-    elif choice == "2":
-        print("\n  Deploy to Railway:")
-        print(f"    cd {root}")
-        print("    railway init --name friend-group")
-        print("    # Set env vars from .env in the Railway dashboard")
-        print("    # Add a volume mounted at /app/data")
-        print("    railway up --detach")
-    elif choice == "3":
-        print("\n  Deploy to Fly.io:")
-        print(f"    cd {root}")
-        print("    flyctl launch --no-deploy")
-        print("    flyctl secrets set $(cat .env | xargs)")
-        print("    flyctl volumes create friend_data --size 1")
-        print("    flyctl deploy")
-    else:
-        print(f"\n  No problem. Run locally with:")
-        print(f"    cd {root}")
-        print("    uv sync && uv run python -m src.main")
+
+    elif choice in ("2", "3", "4"):
+        # These need a local copy of the project
+        if _is_temp:
+            if choice == "2":
+                label = "Railway"
+            elif choice == "3":
+                label = "Fly.io"
+            else:
+                label = "later use"
+
+            print(f"\n  To deploy to {label}, you'll need a local copy of the project.")
+            dest = _ask_save_location(root)
+            if dest:
+                root = dest
+            else:
+                print("  Skipped saving. The project is temporarily at:")
+                print(f"    {root}")
+                print("  It will be lost when you clean up.")
+
+        if choice == "2":
+            print(f"\n  Deploy to Railway:")
+            print(f"    cd {root}")
+            print("    railway init --name friend-group")
+            print("    # Set env vars from .env in the Railway dashboard")
+            print("    # Add a volume mounted at /app/data")
+            print("    railway up --detach")
+        elif choice == "3":
+            print(f"\n  Deploy to Fly.io:")
+            print(f"    cd {root}")
+            print("    flyctl launch --no-deploy")
+            print("    flyctl secrets set $(cat .env | xargs)")
+            print("    flyctl volumes create friend_data --size 1")
+            print("    flyctl deploy")
+        else:
+            print(f"\n  Run locally with:")
+            print(f"    cd {root}")
+            print("    uv sync && uv run python -m src.main")
 
     print()
-    clean = input("  Clear setup/cache files? (select N if deploy failed) [y/N]: ").strip().lower()
-    if clean == "y":
-        for f in [root / ".init-checkpoint.json", root / ".scrape-cache"]:
-            if f.is_file():
-                f.unlink()
-                print(f"    Removed {f.name}")
-            elif f.is_dir():
-                import shutil
-                shutil.rmtree(f)
-                print(f"    Removed {f.name}/")
-        print("  Cleaned up.")
-        cp["step"] = "done"
-        save_checkpoint(cp)
-    else:
-        # Keep checkpoint at deploy so next run goes back to deploy
-        cp["step"] = "deploy"
-        save_checkpoint(cp)
-        sys.exit(0)
+    retry = input("  Try a different deploy option? [y/N]: ").strip().lower()
+    if retry == "y":
+        return step_deploy(cp, paths)
 
+    cp["step"] = "done"
+    save_checkpoint(cp)
     return cp
 
 
@@ -446,13 +507,19 @@ def step_done(cp, paths):
     print("  │  Setup Complete!                      │")
     print("  └──────────────────────────────────────┘")
     print()
-    print(f"  Project: {paths['root']}")
-    print()
     print("  Your friends:")
     for c in selected:
         slug = c["name"].lower().replace(" ", "_")
         print(f"    {c['name']} (friends/{slug}/)")
     print()
+
+    # Clean up temp staging dir
+    if _is_temp:
+        clean = input("  Clean up temporary files? [Y/n]: ").strip().lower()
+        if clean in ("", "y", "yes"):
+            shutil.rmtree(paths["root"], ignore_errors=True)
+            print("  Cleaned up.")
+
     clear_checkpoint()
 
 
@@ -482,7 +549,8 @@ def main():
     paths = get_paths(root)
     CHECKPOINT_PATH = root / ".init-checkpoint.json"
 
-    print(f"  Project: {root}")
+    if not _is_temp:
+        print(f"  Project: {root}")
 
     cp = load_checkpoint()
 
