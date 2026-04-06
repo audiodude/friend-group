@@ -2226,14 +2226,14 @@ def step_telegram_group(cp, paths):
     first_token = next(iter(tokens.values()))
 
     print()
-    print("  +-----------------------------------------------------+")
+    print("  +------------------------------------------------------+")
     print("  |  Telegram Group Setup                                |")
-    print("  +-----------------------------------------------------+")
+    print("  +------------------------------------------------------+")
     print("  |  1. Create a new Telegram group                      |")
     print("  |  2. Add ALL your friend bots to the group            |")
     print("  |  3. Send any message in the group                    |")
     print("  |  4. Come back here and press ENTER                   |")
-    print("  +-----------------------------------------------------+")
+    print("  +------------------------------------------------------+")
 
     input("\n  Press ENTER after sending a message in the group...")
 
@@ -2297,14 +2297,14 @@ def step_deploy(cp, paths):
 
     root = paths["root"]
     print()
-    print("  +-----------------------------------------------------+")
+    print("  +------------------------------------------------------+")
     print("  |  Deploy                                              |")
-    print("  +-----------------------------------------------------+")
+    print("  +------------------------------------------------------+")
     print("  |  How do you want to run your friend group?           |")
     print("  |                                                      |")
     print("  |  1) Docker (local, always on)                        |")
     print("  |  2) Skip -- I'll deploy myself later                 |")
-    print("  +-----------------------------------------------------+")
+    print("  +------------------------------------------------------+")
     print()
 
     choice = input("  Choice [1/2]: ").strip()
@@ -2412,9 +2412,9 @@ def step_deploy(cp, paths):
 def step_done(cp, paths):
     selected = cp.get("selected", [])
     print()
-    print("  +--------------------------------------+")
+    print("  +---------------------------------------+")
     print("  |  Setup Complete!                      |")
-    print("  +--------------------------------------+")
+    print("  +---------------------------------------+")
     print()
     print("  Your friends:")
     for c in selected:
