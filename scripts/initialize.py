@@ -12,7 +12,6 @@ Run directly:  uv run https://raw.githubusercontent.com/audiodude/friend-group/m
 Or locally:    uv run scripts/initialize.py
 """
 
-import json
 import os
 import subprocess
 import sys
@@ -21,17 +20,23 @@ from pathlib import Path
 REPO_URL = "https://github.com/audiodude/friend-group.git"
 
 
-# ─── Bootstrap (must run before imports from lib) ─────────────────────────────
+# ─── Bootstrap ────────────────────────────────────────────────────────────────
+# When run via `uv run https://...`, this script is downloaded alone.
+# We need the repo for lib.py and platforms/. If we detect we're running
+# outside the project, clone it and re-exec the repo's copy of this script.
 
-def bootstrap_project() -> Path:
-    """Clone the repo if we're not already in a project directory."""
+def _find_project() -> Path | None:
     cwd = Path.cwd()
     if (cwd / "src" / "main.py").exists() and (cwd / "friends").exists():
         return cwd
     if (cwd / "friend-group" / "src" / "main.py").exists():
         return cwd / "friend-group"
+    return None
 
-    target = cwd / "friend-group"
+
+def _bootstrap_and_reexec():
+    """Clone the repo and re-exec the repo's copy of this script."""
+    target = Path.cwd() / "friend-group"
     if not target.exists():
         print(f"\n  Cloning friend-group into {target}...")
         result = subprocess.run(
@@ -42,20 +47,28 @@ def bootstrap_project() -> Path:
             print(f"  Error cloning: {result.stderr}")
             sys.exit(1)
         print("  Done.")
-    return target
+
+    # Re-exec the repo's copy so all imports work naturally
+    repo_script = target / "scripts" / "initialize.py"
+    os.execv(sys.executable, [sys.executable, str(repo_script)] + sys.argv[1:])
 
 
-# Bootstrap first so lib.py is available
-_root = bootstrap_project()
-sys.path.insert(0, str(_root / "scripts"))
+# If lib.py isn't importable, we need to bootstrap
+_project = _find_project()
+if _project is None:
+    _bootstrap_and_reexec()
+    # never reaches here
+
+sys.path.insert(0, str(_project / "scripts"))
 
 import curses  # noqa: E402
+import json  # noqa: E402
 from lib import (  # noqa: E402
-    get_client, get_paths, get_user_context, resolve_project_dir,
+    get_client, get_paths, get_user_context,
     load_env, set_env_var, compile_profile,
     load_or_create_profile, save_profile,
     run_selection_loop, generate_souls_for_selected,
-    create_friend_dir, get_existing_friend_names, collect_bot_token, scrape_site,
+    create_friend_dir, get_existing_friend_names, collect_bot_token,
 )
 
 
@@ -465,7 +478,7 @@ def main():
     print("  ║   Friend Group — Initialize          ║")
     print("  ╚══════════════════════════════════════╝")
 
-    root = _root
+    root = _project
     paths = get_paths(root)
     CHECKPOINT_PATH = root / ".init-checkpoint.json"
 
