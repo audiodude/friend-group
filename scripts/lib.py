@@ -325,6 +325,58 @@ def _show_platform_help():
     print("  Example: your website, Mastodon, Last.fm, and GitHub.\n")
 
 
+def _extract_text_from_archive(path: Path, max_bytes: int = 30000) -> str:
+    """Extract readable text files from a tar/zip archive."""
+    import tarfile
+    import zipfile
+
+    text_extensions = {".txt", ".md", ".json", ".csv", ".html", ".htm",
+                       ".xml", ".yaml", ".yml", ".toml", ".ini", ".cfg",
+                       ".py", ".js", ".ts", ".rst", ".log", ".mbox"}
+    parts = []
+    total = 0
+
+    try:
+        if tarfile.is_tarfile(str(path)):
+            with tarfile.open(str(path), "r:*") as tf:
+                for member in tf.getmembers():
+                    if not member.isfile():
+                        continue
+                    suffix = Path(member.name).suffix.lower()
+                    if suffix not in text_extensions:
+                        continue
+                    try:
+                        f = tf.extractfile(member)
+                        if f:
+                            chunk = f.read(max_bytes - total).decode("utf-8", errors="replace")
+                            parts.append(f"--- {member.name} ---\n{chunk}")
+                            total += len(chunk)
+                            if total >= max_bytes:
+                                break
+                    except Exception:
+                        continue
+        elif zipfile.is_zipfile(str(path)):
+            with zipfile.ZipFile(str(path)) as zf:
+                for name in zf.namelist():
+                    suffix = Path(name).suffix.lower()
+                    if suffix not in text_extensions:
+                        continue
+                    try:
+                        chunk = zf.read(name)[:max_bytes - total].decode("utf-8", errors="replace")
+                        parts.append(f"--- {name} ---\n{chunk}")
+                        total += len(chunk)
+                        if total >= max_bytes:
+                            break
+                    except Exception:
+                        continue
+    except Exception as e:
+        print(f"  Error reading archive: {e}")
+        return ""
+
+    print(f"  Extracted {len(parts)} text files from archive")
+    return "\n\n".join(parts)
+
+
 def get_user_context(paths: dict) -> str:
     """Interactive loop to collect user context from multiple sources."""
     print("\n  Tell me about yourself. You can provide as many sources as you want.")
@@ -362,9 +414,20 @@ def get_user_context(paths: dict) -> str:
         # File path?
         path = Path(entry).expanduser()
         if path.exists() and path.is_file():
-            content = path.read_text()[:15000]
-            all_parts.append(f"File ({path.name}):\n{content}")
-            print(f"  Added {path.name}. Enter another, or q to finish.")
+            # Handle archives
+            if path.suffix in (".tgz", ".gz", ".tar", ".zip"):
+                content = _extract_text_from_archive(path)
+            else:
+                try:
+                    content = path.read_text()[:15000]
+                except UnicodeDecodeError:
+                    print(f"  Can't read {path.name} as text. Skipping.")
+                    continue
+            if content:
+                all_parts.append(f"File ({path.name}):\n{content}")
+                print(f"  Added {path.name}. Enter another, or q to finish.")
+            else:
+                print(f"  No readable text found in {path.name}.")
             continue
 
         # Treat as free-text description
