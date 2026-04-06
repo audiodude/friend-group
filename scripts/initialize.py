@@ -1444,9 +1444,9 @@ def get_user_context(paths: dict,
                 content = _extract_text_from_archive(fpath)
             else:
                 try:
-                    content = fpath.read_text()[:15000]
-                except UnicodeDecodeError:
-                    print(f"  Can't read {fpath.name} as text. Skipping.")
+                    content = fpath.read_bytes().decode("utf-8", errors="replace")[:15000]
+                except Exception:
+                    print(f"  Can't read {fpath.name}. Skipping.")
                     continue
             if content:
                 all_parts.append(f"File ({fpath.name}):\n{content}")
