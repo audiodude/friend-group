@@ -20,6 +20,15 @@ import tempfile
 from pathlib import Path
 
 REPO_URL = "https://github.com/audiodude/friend-group.git"
+STAGING_DIR = Path(tempfile.gettempdir()) / "friend-group-setup"
+
+# Handle --start-over before anything else
+if "--start-over" in sys.argv:
+    for p in [STAGING_DIR, STAGING_DIR.parent / "friend-group-setup"]:
+        if p.exists():
+            shutil.rmtree(p)
+    print("  Cleared all setup state. Starting fresh.\n")
+    sys.argv.remove("--start-over")
 
 
 # ─── Bootstrap ────────────────────────────────────────────────────────────────
@@ -48,7 +57,7 @@ def _bootstrap() -> tuple[Path, bool]:
         return existing, False
 
     # Clone to a persistent temp location (survives checkpoint/resume)
-    staging = Path(tempfile.gettempdir()) / "friend-group-setup"
+    staging = STAGING_DIR
     if not (staging / "src" / "main.py").exists():
         print(f"\n  Setting up workspace...")
         if staging.exists():
