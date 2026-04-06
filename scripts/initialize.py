@@ -12,29 +12,16 @@ Run directly:  uv run https://raw.githubusercontent.com/audiodude/friend-group/m
 Or locally:    uv run scripts/initialize.py
 """
 
-import curses
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-# When run via uv from a URL, lib.py won't be importable directly.
-# Add scripts/ to path so `import lib` works when run locally.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from lib import (
-    get_client, get_paths, get_user_context, resolve_project_dir,
-    load_env, set_env_var, compile_profile,
-    load_or_create_profile, save_profile,
-    run_selection_loop, generate_souls_for_selected,
-    create_friend_dir, get_existing_friend_names, collect_bot_token, scrape_site,
-)
-
 REPO_URL = "https://github.com/audiodude/friend-group.git"
 
 
-# ─── Bootstrap ────────────────────────────────────────────────────────────────
+# ─── Bootstrap (must run before imports from lib) ─────────────────────────────
 
 def bootstrap_project() -> Path:
     """Clone the repo if we're not already in a project directory."""
@@ -56,6 +43,20 @@ def bootstrap_project() -> Path:
             sys.exit(1)
         print("  Done.")
     return target
+
+
+# Bootstrap first so lib.py is available
+_root = bootstrap_project()
+sys.path.insert(0, str(_root / "scripts"))
+
+import curses  # noqa: E402
+from lib import (  # noqa: E402
+    get_client, get_paths, get_user_context, resolve_project_dir,
+    load_env, set_env_var, compile_profile,
+    load_or_create_profile, save_profile,
+    run_selection_loop, generate_souls_for_selected,
+    create_friend_dir, get_existing_friend_names, collect_bot_token, scrape_site,
+)
 
 
 # ─── Checkpoint ───────────────────────────────────────────────────────────────
@@ -464,7 +465,7 @@ def main():
     print("  ║   Friend Group — Initialize          ║")
     print("  ╚══════════════════════════════════════╝")
 
-    root = bootstrap_project()
+    root = _root
     paths = get_paths(root)
     CHECKPOINT_PATH = root / ".init-checkpoint.json"
 
