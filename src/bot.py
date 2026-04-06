@@ -93,6 +93,8 @@ class FriendGroup:
         # Engagement tracking: per-bot momentum that decays over time
         # {bot_name: {"last_spoke": timestamp, "last_replied_to": timestamp, "streak": int}}
         self._engagement: dict[str, dict] = {}
+        # Active response tasks per bot — cancelled when new message arrives
+        self._active_tasks: dict[str, asyncio.Task] = {}
 
     def _get_engagement_modifier(self, name: str) -> float:
         """Return a multiplier (0.0-1.0+) based on how engaged this bot is
@@ -397,8 +399,14 @@ class FriendGroup:
                     self._record_replied_to(prev_msg.sender)
                 break  # only check the most recent prior message
 
+        # Cancel any pending responses — new message changes context
+        for name, task in list(self._active_tasks.items()):
+            if not task.done():
+                task.cancel()
+                logger.info(f"{name}'s pending response cancelled — new message arrived")
+        self._active_tasks.clear()
+
         # Each friend independently decides whether to respond
-        tasks = []
         for name, bot in self.bots.items():
             # Don't respond to own messages
             if is_bot_message and bot.user_id == sender_id:
@@ -428,12 +436,12 @@ class FriendGroup:
                     logger.debug(f"{name} is unavailable (schedule/chance)")
                 continue
 
-            tasks.append(self._friend_consider_response(
-                name, bot, friend_config, sender_name, message.text, message.message_id
-            ))
-
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            task = asyncio.create_task(
+                self._friend_consider_response(
+                    name, bot, friend_config, sender_name, message.text, message.message_id
+                )
+            )
+            self._active_tasks[name] = task
 
         # Periodically compact chat history
         chat_config = self.global_config.get("chat", {})
@@ -478,5 +486,9 @@ class FriendGroup:
                     self._record_spoke(name)
                     logger.info(f"{name} responded ({len(sent)} msgs): {sent[0].text[:50]}...")
 
+        except asyncio.CancelledError:
+            logger.info(f"{name}'s response was interrupted by new message")
         except Exception as e:
             logger.exception(f"Error in {name}'s response: {e}")
+        finally:
+            self._active_tasks.pop(name, None)
