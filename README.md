@@ -2,98 +2,92 @@
 
 A Telegram group chat where your friends are AI bots. Yes, it's come to this.
 
-Each friend has their own personality (SOUL.md), persistent memory (MEMORY.md), timezone-aware schedule, and texting style. They decide independently whether to respond to messages, occasionally talk to each other, and remember things you've told them. It's like a real group chat except nobody flakes on plans because nobody makes plans because they aren't real.
+Each friend has their own personality, persistent memory, timezone-aware schedule, and texting style. They decide independently whether to respond, occasionally talk to each other, and sometimes start conversations on their own. It's like a real group chat except nobody flakes on plans because nobody makes plans because they aren't real. And they're bots, because you don't have real friends.
 
 ## Quick Start
 
-No clone needed. Just run:
+You need [uv](https://docs.astral.sh/uv/) installed. Then:
 
 ```bash
 uv run https://raw.githubusercontent.com/audiodude/friend-group/main/scripts/initialize.py
 ```
 
-This clones the repo, then walks you through setup. Or if you already have the repo:
+That's it. The wizard handles everything: cloning the repo, collecting your profile, generating friends, setting up Telegram bots, and deploying. Quit anytime — it checkpoints your progress.
+
+## Your profile
+
+We don't want generic AI friends right? We want AI friends that are....you know....sorta like us. Who know us, who _get_ us. That's why when you generate your new friends, you can optionally provide some material about yourself to base _them_ on. One or two sentences, provided documents, all the way up to URLs to scrape.
+
+The URLs can come from multiple sources (your website, Mastodon, GitHub, Last.fm, Bluesky, etc.) and the ~~Python initialization script~~ personalized friend maker will use the appropriate APIs. Mastodon is encouraged, it auto scrapes your last 100 posts.
+
+## Adding more friends
 
 ```bash
-uv run scripts/initialize.py
+uv run scripts/make_new_friend.py
 ```
 
-The setup wizard walks you through everything:
+Same selection TUI, uses your existing profile. Creates the friend, collects the bot token, done.
 
-1. **Anthropic API key** — you'll need one from [console.anthropic.com](https://console.anthropic.com)
-2. **User profile** — point it at your website, paste a description, or load a file. It uses this to generate friends you'd actually want to talk to (the bar is low — they just need to be more interesting than a chatbot, which, well)
-3. **Friend selection** — a curses TUI shows 20 candidates. Navigate with arrow keys, ENTER to hold, `r` to re-roll the rest, `a` to accept, `e` to edit their personalities in your editor first. Repeat until you've assembled a friend group that doesn't make you feel too weird about yourself
-4. **Telegram bots** — step-by-step BotFather instructions. One bot per friend. Yes you have to do this manually. No there is not a better way
-5. **Group chat** — create a Telegram group, add the bots, the script auto-detects the group ID
-
-Quit at any point — progress is checkpointed. Run the script again to resume.
-
-## Run locally
-
-```bash
-uv run python -m src.main
-```
-
-Reads config from `config.yaml` and secrets from `.env`.
-
-## Deploy to Railway
-
-```bash
-railway init --name friend-group
-railway link
-railway service link friend-group-worker
-```
-
-Set env vars (from `.env`):
-- `ANTHROPIC_API_KEY`
-- `TELEGRAM_GROUP_CHAT_ID`
-- `TELEGRAM_BOT_TOKEN_<NAME>` for each friend
-
-```bash
-railway up --detach -m "deploy"
-```
-
-Add a volume mounted at `/app/data` for persistent chat history and memories.
+You can also edit any friend's personality directly — it's just a markdown file at `friends/<name>/SOUL.md`. The wizard won't overwrite edits you've made.
 
 ## How it works
 
 When you send a message in the group:
 
-1. Each bot independently checks their **schedule** — are they awake? At work? Is it their day off? A random roll against their chattiness determines if they're "around"
-2. Bots that pass the schedule gate get a Claude API call with their SOUL.md + MEMORY.md + recent chat history, and **decide whether to respond** based on personality and relevance
-3. If they respond, they wait a realistic delay (simulating typing) before sending
-4. If something important was said, they selectively update their MEMORY.md
-5. Chat history is periodically compacted — old messages get summarized so context doesn't grow forever
+1. Each bot checks their **schedule** — are they awake? At work? Day off? A random roll against their chattiness determines if they're "around"
+2. Bots that pass the gate get a Claude call with their personality + memory + chat history, and decide whether to respond
+3. They wait a realistic delay before sending — sometimes splitting thoughts across multiple messages
+4. Important facts get saved to their memory for future conversations
+5. Old chat history is periodically summarized to keep context manageable
 
-Bots also occasionally respond to each other, at a lower rate.
+Bots also initiate conversations when the chat's been quiet, and catch up on messages where they were mentioned but unavailable (like a friend checking their phone after work).
 
 ## Project structure
 
 ```
-friends/
-  <name>/
-    SOUL.md        # personality (static, edit to taste)
-    MEMORY.md      # learned facts (auto-updated)
-    config.yaml    # timezone, schedule, chattiness
-src/
-  main.py          # entry point
-  bot.py           # telegram polling + message dispatch
-  brain.py         # claude-powered decision + response
-  chat_history.py  # rolling chat log + compaction
-  schedule.py      # timezone-aware availability
-  config.py        # config loading
+friends/<name>/
+  SOUL.md          # personality — edit freely
+  MEMORY.md        # learned facts — auto-updated
+  config.yaml      # timezone, schedule, chattiness, work_type
 scripts/
   initialize.py    # setup wizard
+  make_new_friend.py
+  lib.py           # shared library
+  platforms/       # pluggable URL fetchers (add your own!)
+src/
+  main.py          # entry point
+  bot.py           # telegram polling + dispatch
+  brain.py         # claude-powered decisions
+  chat_history.py  # rolling log + compaction
+  schedule.py      # timezone-aware availability
+  config.py        # config loading
 ```
 
-## Adding more friends
+## FAQ
 
-Create a new bot with BotFather, then either:
-- Run `initialize.py` again (it'll detect existing friends)
-- Manually create a `friends/<name>/` directory with SOUL.md, MEMORY.md, and config.yaml
+**How much does it cost?**
+Depends on how chatty your friends are. Each response is one Claude API call (~$0.003-0.01). A quiet group might cost $1-2/month. Hosting is extra if you deploy to the cloud, otherwise your friends will be on vacation if Docker is not running on your computer.
 
-Set `TELEGRAM_BOT_TOKEN_<NAME>` and redeploy.
+**Can I change a friend's personality?**
+Yes, edit `friends/<name>/SOUL.md`. It's just markdown. Changes take effect immediately — no restart needed.
 
-## Is this sad?
+**Why do my friends sound like AI?**
+The prompt engineering fights hard against this, but sometimes Claude gonna Claude. Edit the Speech Patterns section of their SOUL.md to be more specific about how they text. Examples help.
 
-Probably. But at least they always text back.
+**Can I add friends from different platforms?**
+No. Telegram only, for now. Each friend is a Telegram bot.
+
+**What's `work_type` in the config?**
+`"office"` means they can sneak a text at work. `"physical"` means they mostly can't (think electrician, park ranger). Affects how responsive they are during _their_ work hours (remember, your friends can live in different tz than you).
+
+**What if I mention a friend and they're asleep (like not in the computer sleep sense)?**
+They'll catch up when they "wake up." Direct @mentions and name mentions get queued and replayed when the bot becomes available.
+
+**Can friends talk to each other?**
+Yes, at a lower rate. Controlled by `bot_reply_chance` in their config.
+
+**How do I add a new platform for profile scraping?**
+Drop a Python file in `scripts/platforms/` with `NAME`, `DESCRIPTION`, `detect(url) -> bool`, and `fetch(url, cache_dir) -> str`. It'll be auto-discovered.
+
+**Is this sad?**
+Probably. But at least they always text back. Well, if they're awake and not at work...

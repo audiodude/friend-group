@@ -8,3 +8,4 @@ dist/
 build/
 .init-checkpoint.json
 .scrape-cache/
+PROFILE.md

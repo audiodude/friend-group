@@ -1,0 +1,10 @@
+services:
+  friend-group:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - friend-data:/app/data
+
+volumes:
+  friend-data:
