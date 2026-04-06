@@ -90,6 +90,53 @@ class FriendGroup:
         self._last_update_id: int = 0
         self._processing_lock = asyncio.Lock()
         self._pending_mentions: list[PendingMention] = []
+        # Engagement tracking: per-bot momentum that decays over time
+        # {bot_name: {"last_spoke": timestamp, "last_replied_to": timestamp, "streak": int}}
+        self._engagement: dict[str, dict] = {}
+
+    def _get_engagement_modifier(self, name: str) -> float:
+        """Return a multiplier (0.0-1.0+) based on how engaged this bot is
+        in the current conversation. Decays over time."""
+        if name not in self._engagement:
+            return 0.0
+
+        eng = self._engagement[name]
+        now = time.time()
+
+        # How recently did they speak?
+        since_spoke = (now - eng.get("last_spoke", 0)) / 60  # minutes
+        # How recently were they replied to?
+        since_replied_to = (now - eng.get("last_replied_to", 0)) / 60
+        streak = eng.get("streak", 0)
+
+        # Decay: full effect within 1 min, fades to zero by 8 min
+        def _decay(minutes: float) -> float:
+            if minutes < 1:
+                return 1.0
+            if minutes > 8:
+                return 0.0
+            return 1.0 - (minutes - 1) / 7
+
+        spoke_boost = _decay(since_spoke) * 0.1        # recently talked = small boost
+        replied_boost = _decay(since_replied_to) * 0.15  # got a reply = moderate boost
+        streak_boost = min(streak * 0.05, 0.15)         # back-and-forth = builds slowly
+
+        # Streak decays too
+        if since_spoke > 5:
+            streak_boost = 0.0
+
+        return spoke_boost + replied_boost + streak_boost
+
+    def _record_spoke(self, name: str):
+        """Record that a bot sent a message."""
+        eng = self._engagement.setdefault(name, {})
+        eng["last_spoke"] = time.time()
+        eng["streak"] = eng.get("streak", 0) + 1
+
+    def _record_replied_to(self, name: str):
+        """Record that someone replied to or followed up on this bot's message."""
+        eng = self._engagement.setdefault(name, {})
+        eng["last_replied_to"] = time.time()
 
     async def _send_messages(self, bot: FriendBot, name: str,
                              messages: list[str],
@@ -224,6 +271,7 @@ class FriendGroup:
 
                     sent = await self._send_messages(bot, name, result["messages"])
                     if sent:
+                        self._record_spoke(name)
                         logger.info(f"{name} initiated ({len(sent)} msgs): {sent[0].text[:50]}...")
 
             except Exception as e:
@@ -295,6 +343,7 @@ class FriendGroup:
                             reply_to_message_id=mention.message_id,
                         )
                         if sent:
+                            self._record_spoke(mention.friend_name)
                             logger.info(f"{mention.friend_name} caught up ({len(sent)} msgs): {sent[0].text[:50]}...")
                     # Whether they responded or not, they "saw" it — remove from queue
 
@@ -339,6 +388,15 @@ class FriendGroup:
         )
         append_message(chat_msg)
 
+        # Track engagement: if this message follows a bot's message,
+        # that bot is being "replied to" (conversation is continuing)
+        recent = load_messages(limit=5)
+        if len(recent) >= 2:
+            for prev_msg in reversed(recent[:-1]):  # skip the one we just added
+                if prev_msg.sender in self.bots:
+                    self._record_replied_to(prev_msg.sender)
+                break  # only check the most recent prior message
+
         # Each friend independently decides whether to respond
         tasks = []
         for name, bot in self.bots.items():
@@ -351,8 +409,10 @@ class FriendGroup:
             mentioned = by_name or by_at
 
             # Schedule gate — are they even "around" right now?
+            engagement = self._get_engagement_modifier(name)
             if not should_respond(friend_config, is_bot_message=is_bot_message,
-                                  mentioned=mentioned):
+                                  mentioned=mentioned,
+                                  engagement_modifier=engagement):
                 # If they were mentioned but unavailable, queue for later
                 if mentioned:
                     self._pending_mentions.append(PendingMention(
@@ -407,6 +467,7 @@ class FriendGroup:
                 sent = await self._send_messages(bot, name, result["messages"],
                                                   reply_to_message_id=reply_to)
                 if sent:
+                    self._record_spoke(name)
                     logger.info(f"{name} responded ({len(sent)} msgs): {sent[0].text[:50]}...")
 
         except Exception as e:

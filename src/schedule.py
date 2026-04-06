@@ -64,9 +64,11 @@ def get_availability(friend_config: dict) -> dict:
 
 
 def should_respond(friend_config: dict, is_bot_message: bool = False,
-                   mentioned: bool = False) -> bool:
+                   mentioned: bool = False,
+                   engagement_modifier: float = 0.0) -> bool:
     """Decide if this friend should respond right now based on schedule.
 
+    engagement_modifier: 0.0-0.8 boost from recent conversation momentum.
     This is the first gate — personality/relevance is checked separately by the LLM.
     """
     availability = get_availability(friend_config)
@@ -75,17 +77,17 @@ def should_respond(friend_config: dict, is_bot_message: bool = False,
     if mentioned:
         # Being addressed directly — much more likely to respond
         if not availability["awake"]:
-            # Asleep but mentioned — might check phone
             responsiveness = 0.15
         elif availability["at_work"]:
-            # At work but mentioned — will probably check
             work_type = friend_config.get("work_type", "office")
             responsiveness = 0.8 if work_type == "office" else 0.4
         else:
-            # Awake and free — almost certainly responds to a direct address
             responsiveness = 0.95
     elif is_bot_message:
         bot_reply_chance = friend_config.get("bot_reply_chance", 0.3)
         responsiveness *= bot_reply_chance
+
+    # Conversation momentum — engaged bots are more likely to keep going
+    responsiveness = min(0.95, responsiveness + engagement_modifier)
 
     return random.random() < responsiveness
