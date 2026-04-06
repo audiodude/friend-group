@@ -10,11 +10,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Add scripts/ to path
+# Add scripts/ to path so we can import initialize as a module
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-import lib
-from platforms import detect_platform, get_plugins
+import initialize as lib  # all functions live in the single file
+# Alias platform helpers
+detect_platform = lib.detect_platform
+PLATFORMS = lib.PLATFORMS
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -58,8 +60,7 @@ class TestPlatformDetection:
     """Tests 10-12: Platform URL detection."""
 
     def test_all_plugins_load(self):
-        plugins = get_plugins()
-        assert len(plugins) >= 10
+        assert len(PLATFORMS) >= 10
 
     @pytest.mark.parametrize("url,expected_name", [
         ("https://bsky.app/profile/test.bsky.social", "Bluesky"),
@@ -78,7 +79,7 @@ class TestPlatformDetection:
     def test_detect_own_urls(self, url, expected_name):
         plugin = detect_platform(url)
         assert plugin is not None, f"No plugin matched {url}"
-        assert plugin.NAME == expected_name
+        assert plugin["name"] == expected_name
 
     def test_unknown_url_returns_none(self):
         assert detect_platform("https://example.com/random/page") is None
@@ -86,9 +87,9 @@ class TestPlatformDetection:
     def test_no_cross_detection(self):
         """GitHub URL shouldn't match Bluesky, etc."""
         plugin = detect_platform("https://github.com/audiodude")
-        assert plugin.NAME == "GitHub"
+        assert plugin["name"] == "GitHub"
         # Make sure it's not matching something else
-        assert plugin.NAME != "Bluesky"
+        assert plugin["name"] != "Bluesky"
 
 
 # ─── Platform fetching with cache ────────────────────────────────────────────
@@ -206,10 +207,10 @@ def _make_mock_stdscr(keys: list[int], size=(40, 120)):
 @pytest.fixture()
 def mock_curses():
     """Mock curses functions that need a real terminal."""
-    with patch("lib.curses.curs_set"), \
-         patch("lib.curses.use_default_colors"), \
-         patch("lib.curses.init_pair"), \
-         patch("lib.curses.color_pair", return_value=0):
+    with patch("initialize.curses.curs_set"), \
+         patch("initialize.curses.use_default_colors"), \
+         patch("initialize.curses.init_pair"), \
+         patch("initialize.curses.color_pair", return_value=0):
         yield
 
 
@@ -325,7 +326,7 @@ class TestUserContext:
     """Tests 24-31: Context input routing."""
 
     def test_url_routes_to_fetch(self, paths):
-        with patch("lib._fetch_url", return_value="fetched content") as mock:
+        with patch("initialize._fetch_url", return_value="fetched content") as mock:
             with patch("builtins.input", side_effect=["https://example.com", "q"]):
                 result, sources = lib.get_user_context(paths)
         mock.assert_called_once()
@@ -375,6 +376,27 @@ class TestUserContext:
             result, sources = lib.get_user_context(paths)
         assert len(sources) == 1
 
+    def test_missing_path_not_added_as_text(self, paths):
+        with patch("builtins.input", side_effect=["../nonexistent/file.txt", "real text", "q"]):
+            result, sources = lib.get_user_context(paths)
+        assert len(sources) == 1
+        assert "nonexistent" not in result
+        assert "real text" in result
+
+    def test_tilde_path_not_added_as_text(self, paths):
+        with patch("builtins.input", side_effect=["~/no/such/file", "ok fine", "q"]):
+            result, sources = lib.get_user_context(paths)
+        assert len(sources) == 1
+        assert sources[0]["label"] == "description"
+
+    def test_file_with_bad_bytes_still_reads(self, paths, tmp_path):
+        bad_file = tmp_path / "page.html"
+        bad_file.write_bytes(b"<html>\x80\xff<body>good content</body></html>")
+        with patch("builtins.input", side_effect=[str(bad_file), "q"]):
+            result, sources = lib.get_user_context(paths)
+        assert len(sources) == 1
+        assert "good content" in result
+
     def test_cached_sources_offered(self, paths):
         cached = [{"label": "old.com", "content": "old stuff"}]
         with patch("builtins.input", side_effect=["y", "q"]):
@@ -396,7 +418,7 @@ class TestSelectionLoop:
     """Tests 32-35: run_selection_loop integration."""
 
     def test_returns_selected_on_accept(self, sample_candidates):
-        with patch("lib.curses.wrapper") as mock_wrapper:
+        with patch("initialize.curses.wrapper") as mock_wrapper:
             # Simulate: select first, accept
             mock_wrapper.return_value = ({0}, "accept")
             result = lib.run_selection_loop(
@@ -409,7 +431,7 @@ class TestSelectionLoop:
         assert result[0]["name"] == "Casey"
 
     def test_returns_none_on_quit(self, sample_candidates):
-        with patch("lib.curses.wrapper") as mock_wrapper:
+        with patch("initialize.curses.wrapper") as mock_wrapper:
             mock_wrapper.return_value = (set(), "quit")
             result = lib.run_selection_loop(
                 client=MagicMock(),
@@ -420,7 +442,7 @@ class TestSelectionLoop:
 
     def test_on_save_called(self, sample_candidates):
         saves = []
-        with patch("lib.curses.wrapper") as mock_wrapper:
+        with patch("initialize.curses.wrapper") as mock_wrapper:
             mock_wrapper.return_value = ({0}, "accept")
             lib.run_selection_loop(
                 client=MagicMock(),
