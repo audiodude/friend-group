@@ -92,3 +92,7 @@ Yes, at a lower rate. Controlled by `bot_reply_chance` in their config.
 
 **Is this sad?**
 Probably. But at least they always text back. Well, if they're awake and not at work...
+
+**By the way, how do you pronounce the name?**
+
+It's "soo-doh-MAH-kee frendz" 😉
