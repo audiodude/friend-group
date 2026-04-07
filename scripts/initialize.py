@@ -1173,27 +1173,31 @@ candidates who would fit in with this existing group):
 """
 
     prompt = f"""Based on this profile of a person, generate exactly {count} fictional friend
-candidates for a virtual group chat. Each friend should be a WHOLE PERSON this
-person would naturally be friends with — not a one-dimensional archetype.
+candidates for a virtual group chat.
+
+START WITH PERSONALITY, NOT PROFESSION. Think about what kind of PERSON would be
+a great friend — their energy, their humor, their emotional style — then figure out
+what they do for a living as a secondary detail.
 
 Return ONLY a JSON array of objects. Each object must have:
 - "name": first name only, capitalized (prefer gender-neutral names or gender-ambiguous nicknames)
+- "traits": array of 3-4 personality trait words (e.g. ["sarcastic", "loyal", "impulsive"] or ["gentle", "witty", "stubborn"]). These are the CORE of who this person is.
 - "age": integer
 - "location": city and country only (e.g. "Berlin, Germany" or "San Francisco, CA")
-- "occupation": what they do
-- "vibe": personality description (1-3 sentences — who they are as a PERSON, not just their job. Mention something about their life outside work.)
-- "why": why they'd be this person's friend (1 sentence)
+- "occupation": what they do (keep it brief — this is NOT the interesting part)
+- "vibe": 1-3 sentences about who they are as a PERSON. Lead with personality and energy, not their job. How do they make you feel when you're around them? What's their deal? IMPORTANT: Show their traits through behavior and anecdotes, don't just list adjectives. "Will roast your music taste then make you a perfect playlist" not "sarcastic but caring".
+- "why": why they'd be this person's friend — focus on personality chemistry, not shared hobbies (1 sentence)
 - "timezone": IANA timezone string
 - "chattiness": float 0.0-1.0
 
-CRITICAL: These are whole people, not walking job descriptions. A sound engineer
-also has a favorite restaurant, a hometown they moved away from, opinions about
-movies, a complicated relationship with a sibling. The "vibe" should hint at the
-PERSON, not just the profession.
+CRITICAL: A friend group needs PERSONALITY DIVERSITY, not just occupational diversity.
+You need the snarky one, the sincere one, the chaotic one, the calm one, the one who
+roasts everyone, the one who gives unsolicited advice, the one who sends memes at 2am.
+Don't make everyone pleasant and supportive — real friend groups have friction, teasing,
+and complementary energies.
 
-Make the friends diverse in personality, occupation, location, and timezone.
+Make the friends diverse in personality, location, and timezone.
 Some should be local, some remote. Mix of introverts/extroverts, tech/non-tech.
-Give them distinct speech patterns and interests that don't overlap too much.
 {held_desc}{existing_desc}
 
 ## Profile of the person
@@ -1214,13 +1218,24 @@ JSON array only, no markdown fencing:"""
 def generate_soul(client, candidate: dict, all_friends: list[dict],
                   user_context: str) -> str:
     others = [f for f in all_friends if f["name"] != candidate["name"]]
-    others_desc = "\n".join(f"- {f['name']}: {f['vibe']}" for f in others)
+    others_desc = "\n".join(
+        f"- {f['name']} ({', '.join(f.get('traits', []))}): {f['vibe']}"
+        for f in others
+    )
+    traits = candidate.get("traits", [])
+    traits_str = ", ".join(traits) if traits else "not specified"
 
     prompt = f"""Write a detailed SOUL.md personality file for a virtual chat bot character.
 This character will be in a group chat with a real person and other bot characters.
 
 ## The character
 {json.dumps(candidate, indent=2)}
+
+## Their core personality traits: {traits_str}
+These traits are the FOUNDATION of this character. Everything else — their backstory,
+their interests, their speech patterns — should flow from and reinforce these traits.
+A "sarcastic, loyal, impulsive" person texts differently than a "gentle, witty, stubborn"
+person. They have different childhoods, different relationships, different coping mechanisms.
 
 ## Other friends in the group
 {others_desc}
@@ -1234,6 +1249,10 @@ they grew up, their family, what they studied, what they eat, what they watch, w
 they do on a lazy Sunday. A real friend is someone you know deeply, not a LinkedIn
 profile with a texting style.
 
+The personality traits above should PERMEATE everything. If someone is "sarcastic",
+their text examples should drip with sarcasm. If someone is "anxious", their backstory
+should explain why. If someone is "chaotic", their interests should be all over the place.
+
 Write the SOUL.md in this exact format:
 
 # {{Name}}
@@ -1243,17 +1262,20 @@ Write the SOUL.md in this exact format:
 - **Location:** ...
 - **Hometown:** ... (where they grew up — should be different from current location)
 - **Occupation:** ...
+- **Traits:** {traits_str}
 - **Timezone:** ...
 
 ## Backstory
 (1-2 paragraphs: Where did they grow up? What was their family like — siblings,
 parents' jobs, family dynamics? Where did they go to college (or not), what did
 they study, what year did they graduate? How did they end up where they live now?
-What's the arc of their life so far?)
+What's the arc of their life so far? The backstory should EXPLAIN the personality traits.)
 
 ## Personality
 (2-3 paragraphs: core traits, emotional patterns, worldview, humor style.
-This should go BEYOND their professional identity.)
+This should go BEYOND their professional identity. Ground it in the traits: {traits_str}.
+How do these traits manifest day-to-day? How do they interact with each other?
+What's charming about this person and what's annoying?)
 
 ## Interests & Life
 (bullet list that covers their WHOLE life, not just their job niche:
@@ -1266,15 +1288,19 @@ This should go BEYOND their professional identity.)
 - What they do on a Friday night or lazy Sunday)
 
 ## Relationships
-(how they relate to the real person and each of the other friends)
+(how they relate to the real person and each of the other friends — think about
+personality chemistry, not just shared interests)
 
 ## Speech Patterns
 (very specific texting style: capitalization, punctuation, emoji usage, message length,
 slang, verbal tics. This section is CRITICAL for making the character feel real.
-Include examples of how they'd actually text — and NOT just about their job.)
+The traits ({traits_str}) should be OBVIOUS from the text examples alone.
+Include 5+ examples of how they'd actually text — covering different moods and topics,
+NOT just about their job.)
 
 ## Boundaries
-(topics they avoid, things that annoy them, conversational pet peeves)
+(topics they avoid, things that annoy them, conversational pet peeves — these should
+also flow from their personality traits)
 
 Be specific and vivid. Avoid generic traits. The character should feel like someone
 you've known for years — you know their coffee order, that they hate cilantro, that
@@ -1297,10 +1323,20 @@ def compile_profile(client, raw_context: str) -> str:
     prompt = f"""Based on the following raw content about a person, write a concise but
 detailed profile summary (300-500 words). Cover:
 - Who they are (name, location, job)
-- Personality traits and values
+- Their personality traits — not just interests, but HOW they are as a person
+  (e.g. sarcastic, earnest, self-deprecating, intense, goofy, loyal, anxious,
+  competitive, nurturing, blunt, etc.)
+- Their humor style (dry, absurdist, punny, dark, wholesome, etc.)
 - Interests, hobbies, creative pursuits
 - Social style and communication preferences
-- What kind of people they'd naturally be friends with
+- What personality TRAITS they'd vibe with in friends (not just shared interests —
+  think about complementary energies. A sarcastic person might love a sincere friend.
+  An anxious person might need a calm, grounding friend.)
+
+End the profile with a section called "Friend chemistry notes" that lists 4-6
+personality trait combos that would make good friends for this person, e.g.:
+- "witty + slightly chaotic — someone who matches their banter energy"
+- "calm + deeply sincere — a grounding presence when things get intense"
 
 Be specific — names, places, projects, preferences. This profile will be reused
 to generate fictional friend characters, so include anything that would help
