@@ -1684,16 +1684,15 @@ def _show_detail_modal(stdscr, candidate: dict):
             text = line[:modal_w - 4]
             stdscr.addstr(row, start_x + 1, text)
 
-        dismiss = " ESC/q to close "
+        dismiss = " any key to close "
         if start_y + modal_h - 1 < height:
             stdscr.addstr(start_y + modal_h - 1,
                            start_x + (modal_w - len(dismiss)) // 2,
                            dismiss, curses.A_DIM)
 
         stdscr.refresh()
-        key = stdscr.getch()
-        if key in (27, ord("q")):
-            return
+        stdscr.getch()
+        return
 
 
 def selection_ui(stdscr, candidates: list[dict],
@@ -1758,7 +1757,7 @@ def selection_ui(stdscr, candidates: list[dict],
             stdscr.addstr(row, 0, line, attr)
 
         footer_row = height - 1
-        footer = " ENTER=invite  x=expand  e=edit  r=re-roll  a=accept+continue  q=save+quit "
+        footer = " ENTER=invite  ESC/s=save+exit  x=expand  e=edit  r=re-roll  q=accept+continue "
         stdscr.addstr(footer_row, 0, footer[:width - 1], curses.color_pair(4))
 
         stdscr.refresh()
@@ -1781,16 +1780,32 @@ def selection_ui(stdscr, candidates: list[dict],
             return held_indices, ("edit_candidate", cursor)
         elif key == ord("r"):
             return held_indices, "reroll"
-        elif key == ord("a"):
+        elif key == ord("q"):
             if n_held > 0:
-                return held_indices, "accept"
-            warn = " You want at least one friend right? Press ENTER to invite each friend."
-            stdscr.addstr(footer_row, 0, warn[:width - 1],
+                # Confirm accept
+                confirm = " Accept selected friends and continue? [y/n] "
+                stdscr.addstr(footer_row, 0, " " * (width - 1))
+                stdscr.addstr(footer_row, 0, confirm[:width - 1],
+                              curses.color_pair(4) | curses.A_BOLD)
+                stdscr.refresh()
+                if stdscr.getch() == ord("y"):
+                    return held_indices, "accept"
+            else:
+                warn = " You want at least one friend right? Press ENTER to invite each friend. "
+                stdscr.addstr(footer_row, 0, " " * (width - 1))
+                stdscr.addstr(footer_row, 0, warn[:width - 1],
+                              curses.color_pair(4) | curses.A_BOLD)
+                stdscr.refresh()
+                stdscr.getch()
+        elif key in (ord("s"), 27):  # s or ESC
+            # Confirm save+exit
+            confirm = " Save selections and exit? [y/n] "
+            stdscr.addstr(footer_row, 0, " " * (width - 1))
+            stdscr.addstr(footer_row, 0, confirm[:width - 1],
                           curses.color_pair(4) | curses.A_BOLD)
             stdscr.refresh()
-            stdscr.getch()
-        elif key == ord("q"):
-            return held_indices, "quit"
+            if stdscr.getch() == ord("y"):
+                return held_indices, "quit"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -205,36 +205,36 @@ class TestSelectionUI:
     """Tests 1-9: TUI behavior via mocked curses."""
 
     def test_arrow_down_moves_cursor(self, sample_candidates):
-        # Down, Down, then quit
-        keys = [curses.KEY_DOWN, curses.KEY_DOWN, ord("q")]
+        # Down, Down, then save+exit (s, confirm y)
+        keys = [curses.KEY_DOWN, curses.KEY_DOWN, ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert action == "quit"
 
     def test_enter_toggles_hold(self, sample_candidates):
-        # Select first, then quit
-        keys = [ord("\n"), ord("q")]
+        # Select first, then save+exit
+        keys = [ord("\n"), ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert 0 in held
         assert action == "quit"
 
     def test_enter_toggles_off(self, sample_candidates):
-        # Toggle on, toggle off, quit
-        keys = [ord("\n"), ord("\n"), ord("q")]
+        # Toggle on, toggle off, save+exit
+        keys = [ord("\n"), ord("\n"), ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert 0 not in held
 
     def test_space_also_toggles(self, sample_candidates):
-        keys = [ord(" "), ord("q")]
+        keys = [ord(" "), ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert 0 in held
 
     def test_backspace_only_uninvites(self, sample_candidates):
         # Select first, move down, backspace (should not invite #1), move up, backspace (should uninvite #0)
-        keys = [ord("\n"), curses.KEY_DOWN, 127, curses.KEY_UP, 127, ord("q")]
+        keys = [ord("\n"), curses.KEY_DOWN, 127, curses.KEY_UP, 127, ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert 0 not in held
@@ -246,20 +246,35 @@ class TestSelectionUI:
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert action == "reroll"
 
-    def test_a_returns_accept_when_held(self, sample_candidates):
-        keys = [ord("\n"), ord("a")]
+    def test_q_returns_accept_when_held(self, sample_candidates):
+        # q=accept+continue, confirm with y
+        keys = [ord("\n"), ord("q"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert action == "accept"
         assert 0 in held
 
-    def test_a_shows_warning_when_none_held(self, sample_candidates):
-        # Press a with nothing held — should flash warning then wait for key, then quit
-        keys = [ord("a"), ord(" "), ord("q")]
+    def test_q_shows_warning_when_none_held(self, sample_candidates):
+        # Press q with nothing held — should flash warning then wait for key, then save+exit
+        keys = [ord("q"), ord(" "), ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert action == "quit"
         assert len(held) == 0
+
+    def test_q_cancel_confirm_stays(self, sample_candidates):
+        # q with held, decline confirm (n), then save+exit
+        keys = [ord("\n"), ord("q"), ord("n"), ord("s"), ord("y")]
+        stdscr = _make_mock_stdscr(keys)
+        held, action = lib.selection_ui(stdscr, sample_candidates, set())
+        assert action == "quit"
+
+    def test_s_cancel_confirm_stays(self, sample_candidates):
+        # s, decline confirm (n), then q to accept
+        keys = [ord("\n"), ord("s"), ord("n"), ord("q"), ord("y")]
+        stdscr = _make_mock_stdscr(keys)
+        held, action = lib.selection_ui(stdscr, sample_candidates, set())
+        assert action == "accept"
 
     def test_e_returns_edit_candidate(self, sample_candidates):
         keys = [ord("e")]
@@ -269,9 +284,9 @@ class TestSelectionUI:
         assert action[0] == "edit_candidate"
         assert action[1] == 0
 
-    def test_q_preserves_held(self, sample_candidates):
-        # Hold first two, quit
-        keys = [ord("\n"), curses.KEY_DOWN, ord("\n"), ord("q")]
+    def test_s_preserves_held(self, sample_candidates):
+        # Hold first two, save+exit
+        keys = [ord("\n"), curses.KEY_DOWN, ord("\n"), ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert action == "quit"
@@ -279,28 +294,28 @@ class TestSelectionUI:
 
     def test_cursor_stays_in_bounds(self, sample_candidates):
         # Up from top, should stay at 0
-        keys = [curses.KEY_UP, curses.KEY_UP, ord("q")]
+        keys = [curses.KEY_UP, curses.KEY_UP, ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert action == "quit"
 
     def test_resume_with_preheld(self, sample_candidates):
-        # Start with {1} held, quit immediately
-        keys = [ord("q")]
+        # Start with {1} held, save+exit immediately
+        keys = [ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, {1})
         assert 1 in held
 
-    def test_x_opens_modal_esc_dismisses(self, sample_candidates):
-        # x to open modal, ESC to close, q to quit
-        keys = [ord("x"), 27, ord("q")]
+    def test_x_opens_modal_any_key_dismisses(self, sample_candidates):
+        # x to open modal, any key to close, save+exit
+        keys = [ord("x"), ord(" "), ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert action == "quit"
 
     def test_vim_keys(self, sample_candidates):
-        # j=down, k=up, then quit
-        keys = [ord("j"), ord("j"), ord("k"), ord("q")]
+        # j=down, k=up, then save+exit
+        keys = [ord("j"), ord("j"), ord("k"), ord("s"), ord("y")]
         stdscr = _make_mock_stdscr(keys)
         held, action = lib.selection_ui(stdscr, sample_candidates, set())
         assert action == "quit"
@@ -313,7 +328,7 @@ class TestUserContext:
 
     def test_url_routes_to_fetch(self, paths):
         with patch("initialize._fetch_url", return_value="fetched content") as mock:
-            with patch("builtins.input", side_effect=["https://example.com", "q"]):
+            with patch("builtins.input", side_effect=["https://example.com", "q", "n"]):
                 result, sources = lib.get_user_context(paths)
         mock.assert_called_once()
         assert "fetched content" in result
@@ -322,7 +337,7 @@ class TestUserContext:
     def test_file_path_routes_to_read(self, paths, tmp_path):
         test_file = tmp_path / "about.txt"
         test_file.write_text("I like music and coding")
-        with patch("builtins.input", side_effect=[str(test_file), "q"]):
+        with patch("builtins.input", side_effect=[str(test_file), "q", "n"]):
             result, sources = lib.get_user_context(paths)
         assert "music and coding" in result
         assert sources[0]["label"] == "about.txt"
@@ -378,14 +393,14 @@ class TestUserContext:
     def test_file_with_bad_bytes_still_reads(self, paths, tmp_path):
         bad_file = tmp_path / "page.html"
         bad_file.write_bytes(b"<html>\x80\xff<body>good content</body></html>")
-        with patch("builtins.input", side_effect=[str(bad_file), "q"]):
+        with patch("builtins.input", side_effect=[str(bad_file), "q", "n"]):
             result, sources = lib.get_user_context(paths)
         assert len(sources) == 1
         assert "good content" in result
 
     def test_cached_sources_offered(self, paths):
         cached = [{"label": "old.com", "content": "old stuff"}]
-        with patch("builtins.input", side_effect=["y", "q"]):
+        with patch("builtins.input", side_effect=["y", "q", "n"]):
             result, sources = lib.get_user_context(paths, cached_sources=cached)
         assert "old stuff" in result
         assert len(sources) == 1
