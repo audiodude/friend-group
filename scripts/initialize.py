@@ -1173,18 +1173,23 @@ candidates who would fit in with this existing group):
 """
 
     prompt = f"""Based on this profile of a person, generate exactly {count} fictional friend
-candidates for a virtual group chat. Each friend should be someone this person
-would naturally be friends with — shared interests, compatible personality, etc.
+candidates for a virtual group chat. Each friend should be a WHOLE PERSON this
+person would naturally be friends with — not a one-dimensional archetype.
 
 Return ONLY a JSON array of objects. Each object must have:
 - "name": first name only, capitalized (prefer gender-neutral names or gender-ambiguous nicknames)
 - "age": integer
 - "location": city and country only (e.g. "Berlin, Germany" or "San Francisco, CA")
 - "occupation": what they do
-- "vibe": personality description (1-3 sentences — who they are, how they act, what makes them interesting)
+- "vibe": personality description (1-3 sentences — who they are as a PERSON, not just their job. Mention something about their life outside work.)
 - "why": why they'd be this person's friend (1 sentence)
 - "timezone": IANA timezone string
 - "chattiness": float 0.0-1.0
+
+CRITICAL: These are whole people, not walking job descriptions. A sound engineer
+also has a favorite restaurant, a hometown they moved away from, opinions about
+movies, a complicated relationship with a sibling. The "vibe" should hint at the
+PERSON, not just the profession.
 
 Make the friends diverse in personality, occupation, location, and timezone.
 Some should be local, some remote. Mix of introverts/extroverts, tech/non-tech.
@@ -1223,6 +1228,12 @@ This character will be in a group chat with a real person and other bot characte
 ## The real person they're friends with
 {user_context}
 
+CRITICAL INSTRUCTION: This is a WHOLE PERSON, not a walking job description. Their
+occupation is ONE facet of who they are. You MUST flesh out their entire life — where
+they grew up, their family, what they studied, what they eat, what they watch, what
+they do on a lazy Sunday. A real friend is someone you know deeply, not a LinkedIn
+profile with a texting style.
+
 Write the SOUL.md in this exact format:
 
 # {{Name}}
@@ -1230,14 +1241,29 @@ Write the SOUL.md in this exact format:
 ## Identity
 - **Age:** ...
 - **Location:** ...
+- **Hometown:** ... (where they grew up — should be different from current location)
 - **Occupation:** ...
 - **Timezone:** ...
 
-## Personality
-(2-3 paragraphs: core traits, emotional patterns, worldview, humor style)
+## Backstory
+(1-2 paragraphs: Where did they grow up? What was their family like — siblings,
+parents' jobs, family dynamics? Where did they go to college (or not), what did
+they study, what year did they graduate? How did they end up where they live now?
+What's the arc of their life so far?)
 
-## Interests
-(bullet list of specific interests, hobbies, obsessions)
+## Personality
+(2-3 paragraphs: core traits, emotional patterns, worldview, humor style.
+This should go BEYOND their professional identity.)
+
+## Interests & Life
+(bullet list that covers their WHOLE life, not just their job niche:
+- Professional/hobby interests
+- Favorite foods, cooking habits, restaurants
+- Movies, TV, books, podcasts they love
+- Outdoor activities, sports, fitness habits
+- Travel experiences or aspirations
+- Guilty pleasures, comfort activities
+- What they do on a Friday night or lazy Sunday)
 
 ## Relationships
 (how they relate to the real person and each of the other friends)
@@ -1245,13 +1271,15 @@ Write the SOUL.md in this exact format:
 ## Speech Patterns
 (very specific texting style: capitalization, punctuation, emoji usage, message length,
 slang, verbal tics. This section is CRITICAL for making the character feel real.
-Include examples of how they'd actually text.)
+Include examples of how they'd actually text — and NOT just about their job.)
 
 ## Boundaries
 (topics they avoid, things that annoy them, conversational pet peeves)
 
-Be specific and vivid. Avoid generic traits. The Speech Patterns section should make
-it possible to distinguish this character's messages from any other character at a glance."""
+Be specific and vivid. Avoid generic traits. The character should feel like someone
+you've known for years — you know their coffee order, that they hate cilantro, that
+they call their mom every Sunday. The Speech Patterns section should make it possible
+to distinguish this character's messages from any other character at a glance."""
 
     response = client.messages.create(
         model=MODEL, max_tokens=4096,

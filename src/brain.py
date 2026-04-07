@@ -1,7 +1,11 @@
 """The LLM-powered brain for each friend bot."""
 
 import json
+import logging
+
 import anthropic
+
+logger = logging.getLogger(__name__)
 
 from .config import load_friend_soul, load_friend_memory, save_friend_memory
 from .chat_history import get_chat_context
@@ -149,6 +153,7 @@ async def think_and_respond(
 
     # Handle memory update
     if result.get("memory_update"):
+        logger.info(f"[{friend_name}] Saving memory: {result['memory_update'][:80]}")
         _update_memory(friend_name, memory, result["memory_update"])
 
     # Normalize messages — support both "message" (string) and "messages" (array)
@@ -283,6 +288,7 @@ async def maybe_initiate(
         return None
 
     if result.get("memory_update"):
+        logger.info(f"[{friend_name}] Saving memory (initiate): {result['memory_update'][:80]}")
         _update_memory(friend_name, memory, result["memory_update"])
 
     messages = result.get("messages") or []
