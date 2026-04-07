@@ -1,9 +1,0 @@
-timezone: "America/Los_Angeles"
-schedule:
-  wake_up: "08:00"
-  sleep_at: "00:00"
-  work_start: "09:30"
-  work_end: "17:30"
-  days_off: [5, 6]
-chattiness: 0.55
-bot_reply_chance: 0.4
