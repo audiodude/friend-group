@@ -1,12 +1,15 @@
 services:
   sudomake-friends:
     build: .
-    env_file: .env
+    env_file:
+      - .env
+      - ~/.sudomake-friends/.env
     environment:
       - DATA_DIR=/app/data
     restart: unless-stopped
     volumes:
       - friend-data:/app/data
+      - ~/.sudomake-friends/friends:/app/friends:ro
 
 volumes:
   friend-data:
