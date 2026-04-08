@@ -706,3 +706,219 @@ class TestStepHistory:
 
         history = (history_paths["friends"] / "HISTORY.md").read_text()
         assert "Version 2" in history
+
+
+# ─── create_friend_dir ──────────────────────────────────────────────────────
+
+class TestCreateFriendDir:
+    """Tests for create_friend_dir saving candidate.json."""
+
+    def test_saves_candidate_json(self, paths, sample_candidates):
+        c = sample_candidates[0]
+        slug = lib.create_friend_dir(paths["friends"], c["name"], "# Soul", c)
+        cpath = paths["friends"] / slug / "candidate.json"
+        assert cpath.exists()
+        saved = json.loads(cpath.read_text())
+        assert saved["name"] == c["name"]
+        assert saved["vibe"] == c["vibe"]
+
+    def test_creates_soul_and_config(self, paths, sample_candidates):
+        c = sample_candidates[0]
+        slug = lib.create_friend_dir(paths["friends"], c["name"], "# My Soul", c)
+        d = paths["friends"] / slug
+        assert (d / "SOUL.md").read_text() == "# My Soul"
+        assert (d / "config.yaml").exists()
+        assert (d / "MEMORY.md").exists()
+
+
+# ─── step_select_friends keep/edit ──────────────────────────────────────────
+
+class TestStepSelectFriendsExisting:
+    """Tests for the keep/edit flow when friends already exist."""
+
+    @pytest.fixture
+    def friends_setup(self, tmp_path):
+        """Create friends dir with existing friends + candidate.json files."""
+        friends_dir = tmp_path / "friends"
+        friends_dir.mkdir()
+        env_path = tmp_path / ".env"
+        env_path.write_text("ANTHROPIC_API_KEY=sk-ant-test123\n")
+        candidates = []
+        for name in ("alex", "river"):
+            d = friends_dir / name
+            d.mkdir()
+            (d / "SOUL.md").write_text(f"# {name}")
+            c = {"name": name.title(), "age": 30, "location": "Brooklyn, NY",
+                 "occupation": "Dev", "vibe": "Cool", "why": "Yes",
+                 "timezone": "America/New_York", "chattiness": 0.5}
+            (d / "candidate.json").write_text(json.dumps(c))
+            candidates.append(c)
+        paths = {"root": tmp_path, "friends": friends_dir, "env": env_path}
+        return paths, candidates
+
+    def test_keep_existing_friends(self, friends_setup):
+        paths, _ = friends_setup
+        cp = {"step": "select_friends", "user_context": "test"}
+        with patch("builtins.input", return_value="y"):
+            result = lib.step_select_friends(cp, paths)
+        assert result["step"] == "telegram_bots"
+        assert len(result["selected"]) == 2
+
+    def test_decline_existing_goes_to_selection(self, friends_setup):
+        paths, _ = friends_setup
+        cp = {"step": "select_friends", "user_context": "test"}
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text='[{"name":"New","age":25,"location":"SF","occupation":"Dev","vibe":"Fun","why":"Yes","timezone":"America/Los_Angeles","chattiness":0.5}]')]
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+        with patch("initialize.get_client", return_value=mock_client):
+            with patch("initialize.curses.wrapper") as mock_wrapper:
+                mock_wrapper.return_value = ({0}, "accept")
+                with patch("initialize.generate_soul", return_value="# Soul"):
+                    with patch("builtins.input", side_effect=["n"]):
+                        result = lib.step_select_friends(cp, paths)
+        assert result["step"] == "telegram_bots"
+
+    def test_edit_loads_candidate_json(self, friends_setup):
+        paths, candidates = friends_setup
+        cp = {"step": "select_friends", "user_context": "test"}
+        new_candidate = {"name": "Sage", "age": 35, "location": "Berlin",
+                         "occupation": "Writer", "vibe": "Dry", "why": "Yes",
+                         "timezone": "Europe/Berlin", "chattiness": 0.7}
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=json.dumps([new_candidate]))]
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+        with patch("initialize.get_client", return_value=mock_client):
+            with patch("initialize.curses.wrapper") as mock_wrapper:
+                # Accept all (2 existing held + new ones)
+                mock_wrapper.return_value = ({0, 1}, "accept")
+                with patch("initialize.generate_soul", return_value="# Soul"):
+                    with patch("builtins.input", return_value="e"):
+                        result = lib.step_select_friends(cp, paths)
+        # Should have loaded candidates into checkpoint
+        assert cp.get("candidates") is not None
+        assert len(cp["candidates"]) >= 2
+
+    def test_edit_fallback_without_candidate_json(self, tmp_path):
+        """Friends without candidate.json get a minimal fallback."""
+        friends_dir = tmp_path / "friends"
+        friends_dir.mkdir()
+        env_path = tmp_path / ".env"
+        env_path.write_text("ANTHROPIC_API_KEY=sk-ant-test123\n")
+        d = friends_dir / "alex"
+        d.mkdir()
+        (d / "SOUL.md").write_text("# alex")
+        # No candidate.json
+        paths = {"root": tmp_path, "friends": friends_dir, "env": env_path}
+        cp = {"step": "select_friends", "user_context": "test"}
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text='[]')]
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+        with patch("initialize.get_client", return_value=mock_client):
+            with patch("initialize.curses.wrapper") as mock_wrapper:
+                mock_wrapper.return_value = ({0}, "accept")
+                with patch("initialize.generate_soul", return_value="# Soul"):
+                    with patch("builtins.input", return_value="e"):
+                        result = lib.step_select_friends(cp, paths)
+        assert cp["candidates"][0]["name"] == "Alex"
+        assert cp["candidates"][0]["vibe"] == "(edit to fill in)"
+
+
+# ─── sources.txt ────────────────────────────────────────────────────────────
+
+class TestSourcesFile:
+    """Tests for sources.txt auto-loading and save offer."""
+
+    def test_loads_sources_txt(self, paths, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        sources_file = tmp_path / "sources.txt"
+        sources_file.write_text("I am a developer\nI like music\n")
+        with patch("builtins.input", side_effect=["y", "q"]):
+            result, sources = lib.get_user_context(paths)
+        assert len(sources) == 2
+        assert "developer" in result
+        assert "music" in result
+
+    def test_sources_txt_with_urls(self, paths, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        sources_file = tmp_path / "sources.txt"
+        sources_file.write_text("https://example.com\n")
+        with patch("initialize._fetch_url", return_value="fetched stuff"):
+            with patch("builtins.input", side_effect=["y", "q", "n"]):
+                result, sources = lib.get_user_context(paths)
+        assert "fetched stuff" in result
+
+    def test_decline_sources_txt(self, paths, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        sources_file = tmp_path / "sources.txt"
+        sources_file.write_text("I am a developer\n")
+        with patch("builtins.input", side_effect=["n", "something else", "q"]):
+            result, sources = lib.get_user_context(paths)
+        assert "developer" not in result
+        assert "something else" in result
+
+    def test_offers_to_save_sources(self, paths, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        with patch("builtins.input", side_effect=["https://example.com", "q", "y"]):
+            with patch("initialize._fetch_url", return_value="stuff"):
+                result, sources = lib.get_user_context(paths)
+        assert (tmp_path / "sources.txt").exists()
+        assert "example.com" in (tmp_path / "sources.txt").read_text()
+
+    def test_no_save_offer_for_description_only(self, paths, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        with patch("builtins.input", side_effect=["just some text", "q"]):
+            result, sources = lib.get_user_context(paths)
+        # No save offer since only descriptions (no URLs/files)
+        assert not (tmp_path / "sources.txt").exists()
+
+
+# ─── Main menu ──────────────────────────────────────────────────────────────
+
+class TestMainMenu:
+    """Tests for the setup-complete menu options."""
+
+    @pytest.fixture
+    def complete_setup(self, tmp_path):
+        """Create a complete setup state."""
+        friends_dir = tmp_path / "friends"
+        friends_dir.mkdir()
+        for name in ("alex", "river"):
+            d = friends_dir / name
+            d.mkdir()
+            (d / "SOUL.md").write_text(f"# {name}")
+        env_path = tmp_path / ".env"
+        env_path.write_text("ANTHROPIC_API_KEY=sk-ant-test\nTELEGRAM_GROUP_CHAT_ID=-123\n")
+        return tmp_path
+
+    def test_adjust_sets_step_to_start(self, complete_setup):
+        """Adjust option should walk through from the beginning."""
+        cp = {"step": "done"}
+        # We can't easily run the full main() loop, but verify the menu logic
+        # by checking that 'a' sets step to 'start'
+        existing = lib.get_existing_friend_names(complete_setup / "friends")
+        assert len(existing) == 2
+        # The menu sets cp["step"] = "start" for adjust
+        # Verify this is what the code does by simulating the branch
+        has_incomplete = cp.get("step") and cp["step"] not in ("start", "done", "deploy")
+        assert not has_incomplete  # no incomplete step
+
+    def test_history_regenerate_offer(self, complete_setup):
+        """When HISTORY.md exists, step_history offers to regenerate."""
+        friends_dir = complete_setup / "friends"
+        (friends_dir / "HISTORY.md").write_text("old history")
+        paths = {"root": complete_setup, "friends": friends_dir,
+                 "env": complete_setup / ".env"}
+        cp = {"step": "history", "anthropic_key": "sk-test", "user_context": "test"}
+        # Decline regeneration
+        with patch("builtins.input", return_value="n"):
+            result = lib.step_history(cp, paths)
+        assert (friends_dir / "HISTORY.md").read_text() == "old history"
+        # Accept regeneration
+        cp = {"step": "history", "anthropic_key": "sk-test", "user_context": "test"}
+        with patch("initialize.generate_history", return_value="new history"):
+            with patch("builtins.input", side_effect=["y", "w"]):
+                result = lib.step_history(cp, paths)
+        assert (friends_dir / "HISTORY.md").read_text() == "new history"

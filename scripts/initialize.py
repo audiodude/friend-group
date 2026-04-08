@@ -2312,10 +2312,25 @@ def step_select_friends(cp, paths):
                         "chattiness": 0.5,
                     })
             held_indices = set(range(len(candidates)))
+            # Pad to CANDIDATE_COUNT with new candidates
+            n_new = CANDIDATE_COUNT - len(candidates)
+            if n_new > 0:
+                print(f"\n  Generating {n_new} new candidates...")
+                new = generate_candidates(client, user_context, candidates,
+                                          existing_friends=existing, count=n_new)
+                candidates = candidates + new
+                candidates = candidates[:CANDIDATE_COUNT]
+            cp["candidates"] = candidates
+            cp["held_indices"] = sorted(held_indices)
+            save_checkpoint(cp)
             # Fall through to the normal selection loop below
 
-    candidates = cp.get("candidates")
-    held_indices = set(cp.get("held_indices", []))
+    if cp.get("candidates"):
+        candidates = cp["candidates"]
+        held_indices = set(cp.get("held_indices", []))
+    else:
+        candidates = None
+        held_indices = None
     if candidates:
         print(f"\n  Resuming with {len(candidates)} candidates ({len(held_indices)} invited)...")
 
