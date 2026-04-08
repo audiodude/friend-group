@@ -2243,10 +2243,17 @@ def step_anthropic_key(cp, paths):
 
 def step_user_profile(cp, paths):
     """Collect or load the user profile."""
-    if cp.get("user_context"):
-        print(f"\n  Profile already compiled ({len(cp['user_context'])} chars).")
+    profile_path = paths["root"] / "profile.txt"
+
+    # Check checkpoint first, then file
+    existing_profile = cp.get("user_context") or (
+        profile_path.read_text() if profile_path.exists() else ""
+    )
+    if existing_profile:
+        print(f"\n  Profile already compiled ({len(existing_profile)} chars).")
         redo = input("  Create a new profile? [y/N]: ").strip().lower()
         if redo != "y":
+            cp["user_context"] = existing_profile
             cp["step"] = "select_friends"
             save_checkpoint(cp)
             return cp
@@ -2271,6 +2278,7 @@ def step_user_profile(cp, paths):
     profile = compile_profile(client, raw_context)
 
     cp["user_context"] = profile
+    profile_path.write_text(profile)
     cp["step"] = "select_friends"
     save_checkpoint(cp)
     print("  Done.")
