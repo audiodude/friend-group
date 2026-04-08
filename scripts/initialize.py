@@ -2100,6 +2100,10 @@ def create_friend_dir(friends_dir: Path, name: str, soul: str,
     with open(friend_dir / "config.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
 
+    # Save candidate JSON for later editing in TUI
+    with open(friend_dir / "candidate.json", "w") as f:
+        json.dump(candidate, f, indent=2)
+
     return slug
 
 
@@ -2283,16 +2287,32 @@ def step_select_friends(cp, paths):
     user_context = cp["user_context"]
     existing = get_existing_friend_names(paths["friends"])
 
-    # If friends already exist, offer to keep them
+    # If friends already exist, offer to keep or edit them
     if existing and not cp.get("candidates"):
         print(f"\n  Current friends: {', '.join(existing)}")
-        keep = input("  Keep these friends? [Y/n]: ").strip().lower()
+        keep = input("  Keep these friends? [Y/n/[e]dit]: ").strip().lower()
         if keep in ("", "y", "yes"):
             cp["step"] = "telegram_bots"
-            # Rebuild selected from existing for downstream steps
             cp["selected"] = [{"name": n} for n in existing]
             save_checkpoint(cp)
             return cp
+        elif keep == "e":
+            # Load existing friends as pre-held candidates in the TUI
+            candidates = []
+            for name in existing:
+                cpath = paths["friends"] / name / "candidate.json"
+                if cpath.exists():
+                    candidates.append(json.loads(cpath.read_text()))
+                else:
+                    # Minimal fallback for friends created before candidate.json
+                    candidates.append({
+                        "name": name.title(), "age": 30,
+                        "location": "Unknown", "occupation": "Unknown",
+                        "vibe": "(edit to fill in)", "why": "", "timezone": "UTC",
+                        "chattiness": 0.5,
+                    })
+            held_indices = set(range(len(candidates)))
+            # Fall through to the normal selection loop below
 
     candidates = cp.get("candidates")
     held_indices = set(cp.get("held_indices", []))
