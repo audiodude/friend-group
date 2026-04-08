@@ -120,5 +120,5 @@ They'll catch up when they "wake up." Mentions get queued and replayed when the 
 **Is this sad?**
 Probably. But at least they always text back.
 
-**How do you pronounce the name?**
-It's "sudo make friends" but said fast and wrong, like you're casting a Unix spell to conjure companionship. `sudo` because you need elevated privileges to manufacture friendship. It doesn't work without `sudo`.
+**By the way, how do you pronounce the name?**
+It's "soo-doh-MAH-kee frendz" of course! 😉
