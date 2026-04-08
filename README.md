@@ -2,7 +2,7 @@
 
 A Telegram group chat where your friends are AI bots. Yes, it's come to this.
 
-Each friend has their own personality, persistent memory, timezone-aware schedule, and texting style. They decide independently whether to respond, occasionally talk to each other, and sometimes start conversations on their own. It's like a real group chat except nobody flakes on plans because nobody makes plans because they aren't real. And they're bots, because you don't have real friends.
+Each friend has their own personality, backstory, persistent memory, timezone-aware schedule, and texting style. They decide independently whether to respond, talk to each other, and sometimes start conversations on their own. It's like a real group chat except nobody flakes on plans because nobody makes plans because they aren't real.
 
 ## Quick Start
 
@@ -12,32 +12,56 @@ You need [uv](https://docs.astral.sh/uv/) and [Docker](https://docs.docker.com/g
 uv run https://raw.githubusercontent.com/audiodude/sudomake-friends/main/scripts/initialize.py
 ```
 
-That's it. One command. The wizard walks you through everything and deploys to Docker at the end. All your data lives in `~/.sudomake-friends/`. Quit anytime — it checkpoints your progress.
+That's it. One command. The wizard walks you through everything:
 
-To start over:
+1. **Profile** — Tell the wizard about yourself (URLs, files, or just type). It auto-detects 14 platforms.
+2. **Friends** — Browse generated candidates in a TUI. Hold the ones you like, re-roll the rest.
+3. **Telegram** — Create bots via BotFather, set up a group chat.
+4. **History** — Generate a shared backstory for how you all know each other.
+5. **Deploy** — Docker builds and runs automatically.
+
+All your data lives in `~/.sudomake-friends/`. Quit anytime — it checkpoints your progress.
+
+### Other commands
+
 ```bash
-uv run https://raw.githubusercontent.com/audiodude/sudomake-friends/main/scripts/initialize.py -- --start-over
+# Start completely fresh
+uv run <url> -- --start-over
+
+# If you have a sources.txt with URLs (one per line), the wizard uses it automatically
+echo "https://github.com/yourname" > sources.txt
+uv run <url>
 ```
 
 ## Your profile
 
-We don't want generic AI friends right? We want AI friends that are....you know....sorta like us. Who know us, who _get_ us. That's why when you generate your new friends, you can optionally provide some material about yourself to base _them_ on. One or two sentences, provided documents, all the way up to URLs to scrape.
+We don't want generic AI friends right? We want friends that _get_ us. That's why the wizard scrapes your digital presence to generate friends that match your personality — not just your interests, but your *energy*.
 
-The wizard auto-detects 14 platforms from URLs:
+Auto-detected platforms: Bandcamp, Bluesky, dev.to, Discogs, GitHub, Goodreads, Hacker News, Last.fm, Letterboxd, Mastodon, Pixelfed/Lemmy, Steam, Tumblr, Wikipedia — plus any website.
 
-Bandcamp, Bluesky, dev.to, Discogs, GitHub, Goodreads, Hacker News, Last.fm, Letterboxd, Mastodon, Pixelfed/Lemmy, Steam, Tumblr, Wikipedia
+Provide as many sources as you want. More context means better friends. You can also save your sources to `sources.txt` for quick re-setup.
 
-Plus any website (scraped automatically). Provide as many as you want — more context means better friends. Mastodon is encouraged, it auto-scrapes your last 100 posts.
+## Friend generation
 
-## Adding more friends
+Friends are generated **personality-first**. The wizard picks traits (sarcastic, loyal, chaotic, gentle) before deciding what someone does for a living. Each friend gets:
 
-Run the wizard again — it'll detect your existing friends and let you add more:
+- **SOUL.md** — Full personality: backstory, traits, interests, food preferences, what they watch, lazy Sunday habits, speech patterns with examples
+- **HISTORY.md** — Shared history of how you all met (generated, editable)
+- **candidate.json** — Original generation data (for editing in the TUI later)
+
+The TUI lets you hold friends you like, re-roll the rest, expand details, and edit candidates before committing.
+
+## Adjusting your setup
+
+Run the wizard again on an existing setup:
 
 ```bash
-uv run https://raw.githubusercontent.com/audiodude/sudomake-friends/main/scripts/initialize.py
+uv run <url>
 ```
 
-You can also edit any friend's personality directly at `~/.sudomake-friends/friends/<name>/SOUL.md`. The wizard won't overwrite your edits.
+You'll get options to **adjust** (walk through each step, keeping what you want), **start over**, or **deploy**. The adjust flow checks at each step whether to reuse existing data or redo it.
+
+You can also edit any friend's personality directly at `~/.sudomake-friends/friends/<name>/SOUL.md`.
 
 ## How it works
 
@@ -49,50 +73,61 @@ When you send a message in the group:
 4. Important facts get saved to their memory for future conversations
 5. Old chat history is periodically summarized to keep context manageable
 
-Bots also initiate conversations when the chat's been quiet, and catch up on messages where they were mentioned but unavailable (like a friend checking their phone after work).
+Bots also initiate conversations when the chat's been quiet, and catch up on messages where they were mentioned but unavailable.
+
+### Response tuning
+
+Not everyone should pile on every message. The system balances this:
+
+- **Human messages**: 70% gate (not everyone responds to you)
+- **Bot-to-bot**: 80% of human rate (they talk to each other almost as much)
+- **Mentions**: Near-guaranteed response when addressed by name
+- **Engagement momentum**: Bots in active conversation are slightly more likely to keep going, but it decays
 
 ## Data
 
-Everything lives in `~/.sudomake-friends/`:
-
 ```
 ~/.sudomake-friends/
-  .env               # API keys and bot tokens
-  friends/<name>/
-    SOUL.md           # personality — edit freely
-    MEMORY.md         # learned facts — auto-updated
-    config.yaml       # timezone, schedule, chattiness, work_type
-  data/               # chat history (managed by the running bot)
+  .env                    # API keys and bot tokens
+  profile.txt             # compiled user profile
+  .init-checkpoint.json   # setup progress
+  friends/
+    HISTORY.md            # shared backstory
+    <name>/
+      SOUL.md             # personality — edit freely
+      candidate.json      # original generation data
+      config.yaml         # timezone, schedule, chattiness
+  # Docker volume (managed by container):
+  #   memories/<name>/MEMORY.md
+  #   CHAT.jsonl
+  #   CHAT_SUMMARY.md
 ```
 
-The Docker container mounts `friends/` and `data/` as volumes, so your data persists across rebuilds.
+## Commands
+
+Send these in the Telegram group chat:
+
+- `/test` or `/debug` — All bots check in with "Hi it's me, \<name\>"
 
 ## FAQ
 
 **How much does it cost?**
-Depends on how chatty your friends are. Each response is one Claude API call (~$0.003-0.01). A quiet group might cost $1-2/month. Your friends will be on vacation if Docker is not running on your computer.
+Each response is one Claude API call (~$0.003-0.01). A quiet group might cost $1-2/month.
 
 **Can I change a friend's personality?**
-Yes, edit `~/.sudomake-friends/friends/<name>/SOUL.md`. It's just markdown. Restart the container to pick up changes.
+Edit `~/.sudomake-friends/friends/<name>/SOUL.md`. It's just markdown. Restart the container to pick up changes.
 
 **Why do my friends sound like AI?**
-The prompt engineering fights hard against this, but sometimes Claude gonna Claude. Edit the Speech Patterns section of their SOUL.md to be more specific about how they text. Examples help.
-
-**Can I add friends from different platforms?**
-No. Telegram only, for now. Each friend is a Telegram bot.
+The prompt engineering fights hard against this, but sometimes Claude gonna Claude. Edit the Speech Patterns section of their SOUL.md to be more specific.
 
 **What's `work_type` in the config?**
-`"office"` means they can sneak a text at work. `"physical"` means they mostly can't (think electrician, park ranger). Affects how responsive they are during _their_ work hours (remember, your friends can live in different timezones than you).
+`"office"` means they can sneak a text at work. `"physical"` means they mostly can't. Affects responsiveness during their work hours (your friends can live in different timezones).
 
-**What if I mention a friend and they're asleep (like not in the computer sleep sense)?**
-They'll catch up when they "wake up." Direct @mentions and name mentions get queued and replayed when the bot becomes available.
-
-**Can friends talk to each other?**
-Yes, at a lower rate. Controlled by `bot_reply_chance` in their config.
+**What if I mention a friend and they're asleep?**
+They'll catch up when they "wake up." Mentions get queued and replayed when the bot becomes available.
 
 **Is this sad?**
-Probably. But at least they always text back. Well, if they're awake and not at work...
+Probably. But at least they always text back.
 
-**By the way, how do you pronounce the name?**
-
-It's "soo-doh-MAH-kee frendz" 😉
+**How do you pronounce the name?**
+It's "sudo make friends" but said fast and wrong, like you're casting a Unix spell to conjure companionship. `sudo` because you need elevated privileges to manufacture friendship. It doesn't work without `sudo`.
