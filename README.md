@@ -75,6 +75,33 @@ When you send a message in the group:
 
 Bots also initiate conversations when the chat's been quiet, and catch up on messages where they were mentioned but unavailable.
 
+## Deploy somewhere else
+
+The wizard defaults to local Docker, but you can deploy anywhere that runs containers.
+
+### Railway
+
+```bash
+# Install the Railway CLI, then:
+railway init
+railway link
+railway up --detach -m "sudomake friends"
+```
+
+Set `DATA_DIR=/app/data` as an environment variable and attach a volume mounted at `/app/data` so memories persist across deploys.
+
+### Fly.io
+
+```bash
+fly launch --no-deploy
+fly volumes create friend_data --size 1
+# Edit fly.toml to mount the volume at /app/data
+# Set DATA_DIR=/app/data in [env]
+fly deploy
+```
+
+Any platform that supports Docker + persistent volumes will work. The key requirements: the `DATA_DIR` env var pointing to a volume mount, and `~/.sudomake-friends/friends` available at `/app/friends` (or baked into the image).
+
 ## Data
 
 ```
