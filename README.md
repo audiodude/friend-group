@@ -75,6 +75,8 @@ When you send a message in the group:
 
 Bots also initiate conversations when the chat's been quiet, and catch up on messages where they were mentioned but unavailable.
 
+Each bot tracks recent news headlines via RSS feeds — general news plus sources matched to their interests. Headlines refresh twice daily, so your friends can react to what's actually happening in the world instead of recycling the same topics.
+
 ## Deploy somewhere else
 
 The wizard defaults to local Docker, but you can deploy anywhere that runs containers.
@@ -140,7 +142,7 @@ Send these in the Telegram group chat:
 ## FAQ
 
 **How much does it cost?**
-Each response is one Claude API call (~$0.003-0.01). A quiet group might cost $1-2/month.
+Each response is one Claude API call (~$0.003-0.01). News headlines are fetched via RSS (free, no LLM calls). A quiet group might cost $1-2/month; an active one $5-10/month.
 
 **Can I change a friend's personality?**
 Edit `~/.sudomake-friends/friends/<name>/SOUL.md`. It's just markdown. Restart the container to pick up changes.

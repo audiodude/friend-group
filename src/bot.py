@@ -15,6 +15,7 @@ from .config import (
 from .chat_history import ChatMessage, append_message, load_messages, maybe_compact
 from .schedule import should_respond, get_availability
 from .brain import think_and_respond, maybe_initiate
+from .news import refresh_all_news
 
 logger = logging.getLogger(__name__)
 
@@ -189,11 +190,12 @@ class FriendGroup:
 
         logger.info("Starting message polling...")
 
-        # Run polling, initiation, and catchup concurrently
+        # Run polling, initiation, catchup, and news concurrently
         await asyncio.gather(
             self._poll_loop(poll_bot, poll_interval),
             self._initiation_loop(),
             self._catchup_loop(),
+            self._news_loop(),
         )
 
     async def _poll_loop(self, poll_bot, poll_interval):
@@ -353,6 +355,50 @@ class FriendGroup:
 
             except Exception as e:
                 logger.exception(f"Error in catchup loop: {e}")
+
+    async def _news_loop(self):
+        """Refresh news headlines twice daily at 7am and 6pm ET."""
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        et = ZoneInfo("America/New_York")
+        last_refresh = None
+
+        # Refresh immediately on startup
+        try:
+            refresh_all_news()
+            last_refresh = datetime.now(et)
+            logger.info("Initial news refresh complete")
+        except Exception as e:
+            logger.exception(f"Initial news refresh failed: {e}")
+
+        while True:
+            await asyncio.sleep(1800)  # check every 30 min
+
+            try:
+                now = datetime.now(et)
+                hour = now.hour
+
+                should_refresh = False
+                if 7 <= hour < 8 and (
+                    last_refresh is None
+                    or last_refresh.hour < 7
+                    or last_refresh.date() < now.date()
+                ):
+                    should_refresh = True
+                elif 18 <= hour < 19 and (
+                    last_refresh is None
+                    or last_refresh.hour < 18
+                    or last_refresh.date() < now.date()
+                ):
+                    should_refresh = True
+
+                if should_refresh:
+                    refresh_all_news()
+                    last_refresh = now
+                    logger.info(f"News refreshed at {now.strftime('%H:%M %Z')}")
+            except Exception as e:
+                logger.exception(f"Error in news loop: {e}")
 
     def _is_mentioned(self, name: str, bot: FriendBot, text: str) -> tuple[bool, bool]:
         """Check if a friend is mentioned in a message.

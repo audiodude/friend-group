@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 from .config import load_friend_soul, load_friend_memory, save_friend_memory, load_history
 from .chat_history import get_chat_context
 from .schedule import get_availability
+from .topics import get_recent_topics, record_topic
+from .news import load_friend_news
 
 
 DECIDE_AND_RESPOND_PROMPT = """You are {name}. This is a group chat with your actual friends. You're all close — you know each other, you hang out, you have history together.
@@ -30,6 +32,12 @@ IMPROV RULE: When someone attributes a fact, memory, or characteristic to you ("
 ## Right now
 Local time: {local_time}
 {status_note}
+
+## Stuff you've seen today
+{news}
+
+## Topics already discussed recently
+{recent_topics}
 
 ## Chat so far
 {chat_context}
@@ -67,6 +75,7 @@ Respond with a JSON object (no markdown fencing):
   "messages": ["message 1", "message 2", ...] or null,
   "reply_to_message_id": message_id or null,
   "memory_update": "brief note" or null,
+  "topic": "2-4 word topic label" or null,
   "delay_seconds": 1-30
 }}
 
@@ -118,6 +127,8 @@ async def think_and_respond(
     history = load_history()
     chat_context = get_chat_context(limit=50)
     availability = get_availability(friend_config)
+    news = load_friend_news(friend_name)
+    recent_topics = get_recent_topics()
 
     status_parts = []
     if not availability["awake"]:
@@ -138,6 +149,8 @@ async def think_and_respond(
         memory=memory if memory else "(No memories yet — this is a fresh start)",
         local_time=availability["local_time"],
         status_note=status_note,
+        news=news if news else "(Nothing loaded yet)",
+        recent_topics=recent_topics if recent_topics else "(None yet)",
         chat_context=chat_context,
         sender=sender,
         message=message,
@@ -174,6 +187,10 @@ async def think_and_respond(
         logger.info(f"[{friend_name}] Saving memory: {result['memory_update'][:80]}")
         _update_memory(friend_name, memory, result["memory_update"])
 
+    # Handle topic tracking
+    if result.get("topic"):
+        record_topic(friend_name, result["topic"])
+
     # Normalize messages — support both "message" (string) and "messages" (array)
     messages = result.get("messages") or []
     if not messages and result.get("message"):
@@ -205,6 +222,12 @@ INITIATE_PROMPT = """You are {name}. This is a group chat with your actual frien
 Local time: {local_time}
 {status_note}
 
+## Stuff you've seen today
+{news}
+
+## Topics already discussed recently
+{recent_topics}
+
 ## Chat so far
 {chat_context}
 
@@ -213,13 +236,23 @@ Local time: {local_time}
 ---
 
 You're checking your phone. The group chat has been quiet for a while.
+It's {day_of_week}. {time_vibe}
+
 Would you send a message right now? Real people sometimes:
 - Share something they just saw, did, or are thinking about
+- React to a news headline or something they read online
 - Send a meme reference, a link, a recommendation
 - Complain about their day
 - Ask a question related to their interests
 - Follow up on something from earlier
 - Just say something random
+
+IMPORTANT: Look at the "Topics already discussed recently" section. Do NOT bring up
+a topic that's already been covered unless you have a genuinely NEW angle on it.
+Real people don't repeat the same conversations every day. If you talked about your
+hobby yesterday, talk about something else today. Vary it — sometimes it's mundane
+(food, weather, a random thought), sometimes it's a reaction to something you saw
+online, sometimes it's a new angle on your interests.
 
 But most of the time, people do NOT text into a quiet group chat. Only send something
 if it feels natural for {name} right now given the time of day and what you're "doing".
@@ -232,7 +265,8 @@ Respond with a JSON object (no markdown fencing):
 {{
   "send": true/false,
   "messages": ["message 1", "message 2", ...] or null,
-  "memory_update": "brief note" or null
+  "memory_update": "brief note" or null,
+  "topic": "2-4 word topic label" or null
 }}
 
 "messages" is an array — you can split into multiple texts if natural, but usually just 1.
@@ -257,6 +291,8 @@ async def maybe_initiate(
     history = load_history()
     chat_context = get_chat_context(limit=30)
     availability = get_availability(friend_config)
+    news = load_friend_news(friend_name)
+    recent_topics = get_recent_topics()
 
     if not availability["awake"]:
         return None
@@ -276,6 +312,24 @@ async def maybe_initiate(
         hours = silence_minutes / 60
         silence_duration = f"{hours:.1f} hours"
 
+    # Time-aware context for variety
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(friend_config.get("timezone", "UTC").replace(" ", "_"))
+    now = datetime.now(tz)
+    day_of_week = now.strftime("%A")
+    hour = now.hour
+    if hour < 10:
+        time_vibe = "Morning energy — coffee, getting started."
+    elif hour < 13:
+        time_vibe = "Midday — could be a work break, lunch thoughts."
+    elif hour < 17:
+        time_vibe = "Afternoon — the drag or the groove."
+    elif hour < 20:
+        time_vibe = "Evening — winding down, making plans, cooking."
+    else:
+        time_vibe = "Late night — couch mode, random thoughts, can't sleep."
+
     prompt = INITIATE_PROMPT.format(
         name=friend_name,
         soul=soul,
@@ -283,8 +337,12 @@ async def maybe_initiate(
         memory=memory if memory else "(No memories yet)",
         local_time=availability["local_time"],
         status_note=status_note,
+        news=news if news else "(Nothing loaded yet)",
+        recent_topics=recent_topics if recent_topics else "(None yet)",
         chat_context=chat_context,
         silence_duration=silence_duration,
+        day_of_week=day_of_week,
+        time_vibe=time_vibe,
     )
 
     response = await client.messages.create(
@@ -313,6 +371,9 @@ async def maybe_initiate(
     if result.get("memory_update"):
         logger.info(f"[{friend_name}] Saving memory (initiate): {result['memory_update'][:80]}")
         _update_memory(friend_name, memory, result["memory_update"])
+
+    if result.get("topic"):
+        record_topic(friend_name, result["topic"])
 
     messages = result.get("messages") or []
     if not messages and result.get("message"):
