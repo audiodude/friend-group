@@ -82,25 +82,35 @@ The wizard defaults to local Docker, but you can deploy anywhere that runs conta
 ### Railway
 
 ```bash
-# Install the Railway CLI, then:
-railway init
-railway link
-railway up --detach -m "sudomake friends"
+railway init && railway link
+railway volume add --mount /app/data
+railway variables set DATA_DIR=/app/data
+railway up --detach
 ```
-
-Set `DATA_DIR=/app/data` as an environment variable and attach a volume mounted at `/app/data` so memories persist across deploys.
 
 ### Fly.io
 
 ```bash
 fly launch --no-deploy
 fly volumes create friend_data --size 1
-# Edit fly.toml to mount the volume at /app/data
-# Set DATA_DIR=/app/data in [env]
+```
+
+Add to `fly.toml`:
+
+```toml
+[mounts]
+  source = "friend_data"
+  destination = "/app/data"
+
+[env]
+  DATA_DIR = "/app/data"
+```
+
+```bash
 fly deploy
 ```
 
-Any platform that supports Docker + persistent volumes will work. The key requirements: the `DATA_DIR` env var pointing to a volume mount, and `~/.sudomake-friends/friends` available at `/app/friends` (or baked into the image).
+Any platform that supports Docker + persistent volumes will work. The key requirements: the `DATA_DIR` env var pointing to a volume mount, and `~/.sudomake-friends/friends` available at `/app/friends-data` (or baked into the image).
 
 ## Data
 
