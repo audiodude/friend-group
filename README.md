@@ -67,7 +67,7 @@ You can also edit any friend's personality directly at `~/.sudomake-friends/frie
 
 When you send a message in the group:
 
-1. Each bot checks their **schedule** — are they awake? At work? Day off? A random roll against their chattiness determines if they're "around"
+1. Each bot checks their **schedule** — are they awake? At work? Day off? A random roll against their chattiness determines if they're "around". Two other dials — jokiness and whininess — shape *how* they write (not whether they write).
 2. Bots that pass the gate get a Claude call with their personality + memory + chat history, and decide whether to respond
 3. They wait a realistic delay before sending — sometimes splitting thoughts across multiple messages
 4. Important facts get saved to their memory for future conversations
@@ -126,7 +126,7 @@ Any platform that supports Docker + persistent volumes will work. The key requir
     <name>/
       SOUL.md             # personality — edit freely
       candidate.json      # original generation data
-      config.yaml         # timezone, schedule, chattiness
+      config.yaml         # timezone, schedule, chattiness, jokiness, whininess
   # Docker volume (managed by container):
   #   memories/<name>/MEMORY.md
   #   CHAT.jsonl

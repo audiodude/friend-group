@@ -10,8 +10,37 @@ logger = logging.getLogger(__name__)
 from .config import load_friend_soul, load_friend_memory, save_friend_memory, load_history
 from .chat_history import get_chat_context
 from .schedule import get_availability
-from .topics import get_recent_topics, record_topic
+from .topics import (
+    get_recent_topics,
+    get_recent_joke_formats,
+    get_recent_complaints,
+    record_topic,
+    record_joke_format,
+    record_complaint,
+)
 from .news import load_friend_news
+
+
+def _describe_dials(friend_config: dict) -> str:
+    """Turn numeric personality dials into prompt guidance."""
+    jokiness = friend_config.get("jokiness", 0.5)
+    whininess = friend_config.get("whininess", 0.3)
+
+    if jokiness < 0.3:
+        joke_line = f"Jokiness: {jokiness:.1f}/1.0 — you're dry, literal, sincere. You rarely crack jokes. When you do, it's understated."
+    elif jokiness < 0.7:
+        joke_line = f"Jokiness: {jokiness:.1f}/1.0 — you joke sometimes but don't perform. Earned laughs, not constant bits. Never setup-punchline comedy."
+    else:
+        joke_line = f"Jokiness: {jokiness:.1f}/1.0 — you're playful and quippy. BUT never setup-punchline stand-up bits. Your humor is in word choice and reactions, not formal joke structures."
+
+    if whininess < 0.3:
+        whine_line = f"Whininess: {whininess:.1f}/1.0 — you rarely complain. You tough things out or find the bright side. Complaining is out of character."
+    elif whininess < 0.7:
+        whine_line = f"Whininess: {whininess:.1f}/1.0 — you complain occasionally about real friction, but don't dwell and don't make it your whole personality."
+    else:
+        whine_line = f"Whininess: {whininess:.1f}/1.0 — you complain often, but VARY what you complain about. Don't make work your only subject. Check the recent complaints list — if you've been hitting the same well, pick something else."
+
+    return f"{joke_line}\n{whine_line}"
 
 
 DECIDE_AND_RESPOND_PROMPT = """You are {name}. This is a group chat with your actual friends. You're all close — you know each other, you hang out, you have history together.
@@ -22,6 +51,9 @@ IMPROV RULE: When someone attributes a fact, memory, or characteristic to you ("
 
 ## Who you are
 {soul}
+
+## Your personality dials
+{personality_dials}
 
 ## How you all know each other
 {history}
@@ -38,6 +70,12 @@ Local time: {local_time}
 
 ## Topics already discussed recently
 {recent_topics}
+
+## Joke formats recently used (DO NOT reuse these)
+{recent_jokes}
+
+## Work/life complaints recently made (pick a different well)
+{recent_complaints}
 
 ## Chat so far
 {chat_context}
@@ -77,8 +115,14 @@ Respond with a JSON object (no markdown fencing):
   "reply_to_message_id": message_id or null,
   "memory_update": "brief note" or null,
   "topic": "2-4 word topic label" or null,
+  "joke_format": "short label if your message uses a joke structure, else null",
+  "complaint_topic": "short label if your message complains about something, else null",
   "delay_seconds": 10-180
 }}
+
+For "joke_format": If your reply is structured as any kind of joke (setup-punchline, sarcastic retort, deadpan one-liner, exaggeration for comedy), describe the structure in 3-6 words — e.g. "setup-punchline about client request", "sarcastic retort to own quote", "deadpan exaggeration about coworker". If your message isn't a joke, use null. BE HONEST about this — it's how we track what you've already done.
+
+For "complaint_topic": If your message complains or vents about something (work, a client, a coworker, traffic, etc), label the subject in 3-6 words — e.g. "client asking for absurd audio edits", "boss micromanaging meeting". If not a complaint, null.
 
 For "delay_seconds": Real people don't reply instantly. They're doing other things — cooking, working, watching TV. Pick a realistic delay based on what {name} is doing right now and how urgent the message feels:
 - Quick reaction to something funny or addressed directly: 10-30 seconds
@@ -101,6 +145,10 @@ This is a GROUP chat. You're friends with EVERYONE here, not just the human.
 Talk TO your friends, not just about them. If Alex says something dumb, tell Alex. If Mika shares a take, agree or push back on it — directed at Mika. Use their names. Riff on their jokes, disagree with their opinions, ask THEM questions. Don't just reply to the human every time — sometimes the most natural response is to another friend.
 
 Don't echo what someone else already said. If your take is basically the same as a message already in the chat, either skip responding or find a different angle.
+
+YOU ARE NOT DOING A BIT. This is the single most important rule. You do NOT default to setup-punchline jokes, especially about work. That structure — "[absurd thing someone said/asked] / [deadpan sarcastic retort]" — is a stand-up crutch, not how friends text. If something happened at work, just say it plainly. Talk about what you're actually doing, seeing, thinking, eating, reading. Not bits. Not punchlines to your own setups. Not "sir this is a Wendy's" style retorts. If you catch yourself writing a two-beat joke, delete it and say something real instead.
+
+Also: work frustration is NOT your only well. Look at the "Work/life complaints recently made" section — if you've been leaning on work complaints, talk about literally anything else: what you ate, something you saw outside, a thought you had, a question, a memory, nothing at all. Real people's texts are mostly mundane, not curated comedy.
 
 KNOW WHEN TO LET IT GO. If someone declines, deflects, or gives a short non-committal answer ("nah", "I'm good", "maybe", "haha yeah"), the topic is OVER. Do NOT:
 - Keep pushing ("no seriously you have to try it", "trust me though")
@@ -137,6 +185,8 @@ async def think_and_respond(
     availability = get_availability(friend_config)
     news = load_friend_news(friend_name)
     recent_topics = get_recent_topics()
+    recent_jokes = get_recent_joke_formats()
+    recent_complaints = get_recent_complaints()
 
     status_parts = []
     if not availability["awake"]:
@@ -153,12 +203,15 @@ async def think_and_respond(
     prompt = DECIDE_AND_RESPOND_PROMPT.format(
         name=friend_name,
         soul=soul,
+        personality_dials=_describe_dials(friend_config),
         history=history if history else "(No shared history yet)",
         memory=memory if memory else "(No memories yet — this is a fresh start)",
         local_time=availability["local_time"],
         status_note=status_note,
         news=news if news else "(Nothing loaded yet)",
         recent_topics=recent_topics if recent_topics else "(None yet)",
+        recent_jokes=recent_jokes if recent_jokes else "(None yet)",
+        recent_complaints=recent_complaints if recent_complaints else "(None yet)",
         chat_context=chat_context,
         sender=sender,
         message=message,
@@ -198,6 +251,10 @@ async def think_and_respond(
     # Handle topic tracking
     if result.get("topic"):
         record_topic(friend_name, result["topic"])
+    if result.get("joke_format"):
+        record_joke_format(friend_name, result["joke_format"])
+    if result.get("complaint_topic"):
+        record_complaint(friend_name, result["complaint_topic"])
 
     # Normalize messages — support both "message" (string) and "messages" (array)
     messages = result.get("messages") or []
@@ -220,6 +277,9 @@ INITIATE_PROMPT = """You are {name}. This is a group chat with your actual frien
 ## Who you are
 {soul}
 
+## Your personality dials
+{personality_dials}
+
 ## How you all know each other
 {history}
 
@@ -235,6 +295,12 @@ Local time: {local_time}
 
 ## Topics already discussed recently
 {recent_topics}
+
+## Joke formats recently used (DO NOT reuse these)
+{recent_jokes}
+
+## Work/life complaints recently made (pick a different well)
+{recent_complaints}
 
 ## Chat so far
 {chat_context}
@@ -268,13 +334,17 @@ if it feels natural for {name} right now given the time of day and what you're "
 ALL THE SAME TEXTING RULES APPLY — short, natural, in character. No AI slop.
 NEVER mention yourself in the third person or reply to your own messages.
 
+YOU ARE NOT DOING A BIT. Do NOT open with a setup-punchline joke, especially about work. No "[absurd thing someone asked] / [deadpan retort]". No stand-up bits. If you're complaining, check the "Work/life complaints recently made" section — if you've been to that well lately, pick something else entirely (food, a thought, something mundane you noticed). Real people's opening texts are usually flat and boring, not curated comedy.
+
 Respond with a JSON object (no markdown fencing):
 
 {{
   "send": true/false,
   "messages": ["message 1", "message 2", ...] or null,
   "memory_update": "brief note" or null,
-  "topic": "2-4 word topic label" or null
+  "topic": "2-4 word topic label" or null,
+  "joke_format": "short label if your message uses a joke structure, else null",
+  "complaint_topic": "short label if your message complains about something, else null"
 }}
 
 "messages" is an array — you can split into multiple texts if natural, but usually just 1.
@@ -301,6 +371,8 @@ async def maybe_initiate(
     availability = get_availability(friend_config)
     news = load_friend_news(friend_name)
     recent_topics = get_recent_topics()
+    recent_jokes = get_recent_joke_formats()
+    recent_complaints = get_recent_complaints()
 
     if not availability["awake"]:
         return None
@@ -341,12 +413,15 @@ async def maybe_initiate(
     prompt = INITIATE_PROMPT.format(
         name=friend_name,
         soul=soul,
+        personality_dials=_describe_dials(friend_config),
         history=history if history else "(No shared history yet)",
         memory=memory if memory else "(No memories yet)",
         local_time=availability["local_time"],
         status_note=status_note,
         news=news if news else "(Nothing loaded yet)",
         recent_topics=recent_topics if recent_topics else "(None yet)",
+        recent_jokes=recent_jokes if recent_jokes else "(None yet)",
+        recent_complaints=recent_complaints if recent_complaints else "(None yet)",
         chat_context=chat_context,
         silence_duration=silence_duration,
         day_of_week=day_of_week,
@@ -382,6 +457,10 @@ async def maybe_initiate(
 
     if result.get("topic"):
         record_topic(friend_name, result["topic"])
+    if result.get("joke_format"):
+        record_joke_format(friend_name, result["joke_format"])
+    if result.get("complaint_topic"):
+        record_complaint(friend_name, result["complaint_topic"])
 
     messages = result.get("messages") or []
     if not messages and result.get("message"):

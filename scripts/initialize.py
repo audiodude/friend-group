@@ -1188,7 +1188,9 @@ Return ONLY a JSON array of objects. Each object must have:
 - "vibe": 1-3 sentences about who they are as a PERSON. Lead with personality and energy, not their job. How do they make you feel when you're around them? What's their deal? IMPORTANT: Show their traits through behavior and anecdotes, don't just list adjectives. "Will roast your music taste then make you a perfect playlist" not "sarcastic but caring".
 - "why": why they'd be this person's friend — focus on personality chemistry, not shared hobbies (1 sentence)
 - "timezone": IANA timezone string
-- "chattiness": float 0.0-1.0
+- "chattiness": float 0.0-1.0 — how often they respond / initiate
+- "jokiness": float 0.0-1.0 — how much they reach for jokes vs. being plain/sincere. Low = dry, literal, earnest. High = playful, quippy (but NEVER setup-punchline bit comedy)
+- "whininess": float 0.0-1.0 — how much they complain about things. Low = stoic/positive, high = often venting. Match to the person's vibe
 
 CRITICAL: A friend group needs PERSONALITY DIVERSITY, not just occupational diversity.
 You need the snarky one, the sincere one, the chaotic one, the calm one, the one who
@@ -2095,6 +2097,8 @@ def create_friend_dir(friends_dir: Path, name: str, soul: str,
             "days_off": [5, 6],
         },
         "chattiness": candidate.get("chattiness", 0.5),
+        "jokiness": candidate.get("jokiness", 0.5),
+        "whininess": candidate.get("whininess", 0.3),
         "bot_reply_chance": 0.3,
     }
     with open(friend_dir / "config.yaml", "w") as f:
