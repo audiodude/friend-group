@@ -6,7 +6,7 @@ Each friend has their own personality, backstory, persistent memory, timezone-aw
 
 ## Quick Start
 
-You need [uv](https://docs.astral.sh/uv/) and [Docker](https://docs.docker.com/get-docker/) installed. Then:
+You need [git](https://git-scm.com/downloads), [uv](https://docs.astral.sh/uv/), and [Docker](https://docs.docker.com/get-docker/) installed. Then:
 
 ```bash
 uv run https://raw.githubusercontent.com/audiodude/sudomake-friends/main/scripts/initialize.py
