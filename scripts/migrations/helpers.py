@@ -90,9 +90,11 @@ def apply_to_all(
 def choose_one_by_one(
     friends_dir: Path,
     fn: Callable[[str, Path], dict],
-    input_fn: Callable[[str], str] = input,
+    input_fn: Callable[[str], str] | None = None,
 ) -> dict[str, dict]:
     """Walk through friends one at a time, letting the user accept/skip each."""
+    if input_fn is None:
+        input_fn = input
     results = {}
     for name, path in iter_friends(friends_dir):
         print(f"\n  — {name} —")
@@ -123,9 +125,11 @@ def prompt_choice(
     question: str,
     options: list[str],
     default: str | None = None,
-    input_fn: Callable[[str], str] = input,
+    input_fn: Callable[[str], str] | None = None,
 ) -> str:
     """Prompt for a choice from a list of options. Returns the chosen option verbatim."""
+    if input_fn is None:
+        input_fn = input
     opts_display = "/".join(
         o.upper() if o == default else o for o in options
     )
@@ -144,9 +148,11 @@ def prompt_float(
     default: float,
     minimum: float = 0.0,
     maximum: float = 1.0,
-    input_fn: Callable[[str], str] = input,
+    input_fn: Callable[[str], str] | None = None,
 ) -> float:
     """Prompt for a float in [minimum, maximum]."""
+    if input_fn is None:
+        input_fn = input
     while True:
         raw = input_fn(f"  {question} [{default}]: ").strip()
         if not raw:

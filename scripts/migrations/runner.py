@@ -117,13 +117,15 @@ def restore_friends_dir(home_dir: Path, backup_path: Path) -> None:
 def check_and_run_pending(
     home_dir: Path,
     migrations_dir: Path | None = None,
-    input_fn: Callable[[str], str] = input,
+    input_fn: Callable[[str], str] | None = None,
 ) -> bool:
     """Step 0 entry point — check for pending migrations and run them interactively.
 
     Returns True if the wizard should continue, False if a mandatory migration
     was skipped or failed and the wizard must halt.
     """
+    if input_fn is None:
+        input_fn = input
     friends_dir = home_dir / "friends"
     applied = load_applied(home_dir)
     all_migrations = discover_migrations(migrations_dir)
