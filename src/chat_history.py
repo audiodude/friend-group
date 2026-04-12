@@ -20,8 +20,11 @@ class ChatMessage:
     text: str
     message_id: int = 0  # telegram message id
     reply_to: int = 0    # telegram message id being replied to
+    is_reaction: bool = False  # emoji reaction, not a text message
 
     def display(self) -> str:
+        if self.is_reaction:
+            return f"{self.sender} reacted {self.text} to msg:{self.reply_to}"
         prefix = f"[{self.sender}]"
         if self.reply_to:
             prefix += f" (replying to msg:{self.reply_to})"

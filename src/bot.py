@@ -205,13 +205,15 @@ class FriendGroup:
                 updates = await poll_bot.bot.get_updates(
                     offset=self._last_update_id + 1,
                     timeout=30,
-                    allowed_updates=["message"],
+                    allowed_updates=["message", "message_reaction"],
                 )
 
                 for update in updates:
                     self._last_update_id = update.update_id
                     if update.message and update.message.chat.id == poll_bot.group_chat_id:
                         await self._handle_message(update.message)
+                    elif update.message_reaction and update.message_reaction.chat.id == poll_bot.group_chat_id:
+                        self._handle_reaction(update.message_reaction)
 
             except TelegramError as e:
                 logger.error(f"Polling error: {e}")
@@ -409,6 +411,47 @@ class FriendGroup:
         by_name = name.lower() in text_lower
         by_at = f"@{bot.username}".lower() in text_lower if bot.username else False
         return by_name, by_at
+
+    def _handle_reaction(self, reaction):
+        """Record an emoji reaction in chat history (no bot response triggered)."""
+        user = reaction.user
+        if not user:
+            return
+
+        # Map bot user IDs to friend names
+        reactor = None
+        if user.id in self._bot_user_ids:
+            for name, bot in self.bots.items():
+                if bot.user_id == user.id:
+                    reactor = name
+                    break
+        if not reactor:
+            reactor = user.first_name or user.username or "someone"
+
+        # Figure out which emoji was added (new - old)
+        old_emojis = set()
+        for r in (reaction.old_reaction or []):
+            if hasattr(r, "emoji"):
+                old_emojis.add(r.emoji)
+        new_emojis = []
+        for r in (reaction.new_reaction or []):
+            if hasattr(r, "emoji") and r.emoji not in old_emojis:
+                new_emojis.append(r.emoji)
+
+        if not new_emojis:
+            return
+
+        emoji_str = " ".join(new_emojis)
+        msg = ChatMessage(
+            timestamp=time.time(),
+            sender=reactor,
+            text=emoji_str,
+            message_id=0,
+            reply_to=reaction.message_id,
+            is_reaction=True,
+        )
+        append_message(msg)
+        logger.debug(f"{reactor} reacted {emoji_str} to msg:{reaction.message_id}")
 
     async def _handle_message(self, message):
         """Process an incoming message and let friends respond."""
