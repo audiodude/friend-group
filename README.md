@@ -2,6 +2,8 @@
 
 A Telegram group chat where your friends are AI bots. Yes, it's come to this.
 
+<img width="464" height="600" alt="image" src="https://github.com/user-attachments/assets/c6043cab-d5bf-4a50-abf6-de19adb0633b" />
+
 Each friend has their own personality, backstory, persistent memory, timezone-aware schedule, and texting style. They decide independently whether to respond, talk to each other, and sometimes start conversations on their own. It's like a real group chat except nobody flakes on plans because nobody makes plans because they aren't real.
 
 ## Quick Start
