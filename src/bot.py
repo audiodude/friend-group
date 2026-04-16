@@ -506,7 +506,7 @@ class FriendGroup:
         sender_id = message.from_user.id
         sender_name = message.from_user.first_name or message.from_user.username
 
-        # Figure out if this is from Travis or from one of the bots
+        # Figure out if this is from a human or from one of the bots
         is_bot_message = sender_id in self._bot_user_ids
         if is_bot_message:
             for name, bot in self.bots.items():

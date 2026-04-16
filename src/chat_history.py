@@ -16,7 +16,7 @@ CHAT_SUMMARY_PATH = DATA_DIR / "CHAT_SUMMARY.md"
 @dataclass
 class ChatMessage:
     timestamp: float
-    sender: str          # friend name or "Travis"
+    sender: str          # friend name or human sender name
     text: str
     message_id: int = 0  # telegram message id
     reply_to: int = 0    # telegram message id being replied to
