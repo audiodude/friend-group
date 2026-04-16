@@ -58,7 +58,7 @@ The TUI lets you hold friends you like, re-roll the rest, expand details, and ed
 Run the wizard again on an existing setup:
 
 ```bash
-uv run <url>
+uv run https://raw.githubusercontent.com/audiodude/sudomake-friends/main/scripts/initialize.py
 ```
 
 You'll get options to **adjust** (walk through each step, keeping what you want), **start over**, or **deploy**. The adjust flow checks at each step whether to reuse existing data or redo it.
