@@ -34,12 +34,14 @@ class FriendBot:
         self.group_chat_id = int(global_config["group_chat_id"])
         self._bot_user_id: int | None = None
         self._bot_username: str | None = None
+        self._can_read_all_group_messages: bool | None = None
 
     async def init(self):
         """Initialize bot and get its user info."""
         me = await self.bot.get_me()
         self._bot_user_id = me.id
         self._bot_username = me.username
+        self._can_read_all_group_messages = bool(me.can_read_all_group_messages)
         logger.info(f"Initialized {self.name} as @{self._bot_username} (id: {self._bot_user_id})")
 
     @property
@@ -49,6 +51,12 @@ class FriendBot:
     @property
     def username(self) -> str:
         return self._bot_username
+
+    @property
+    def can_read_all_group_messages(self) -> bool:
+        """True if this bot's Telegram privacy mode is OFF (it can see all
+        group messages, not just slash-commands and @mentions)."""
+        return bool(self._can_read_all_group_messages)
 
     async def send_message(self, text: str, reply_to_message_id: int | None = None):
         """Send a message to the group chat."""
@@ -184,9 +192,35 @@ class FriendGroup:
 
         logger.info(f"Ready with {len(self.bots)} friends")
 
+    def _select_poll_bot(self) -> "FriendBot":
+        """Pick the single bot that reads all group messages for everyone.
+
+        It MUST have Telegram privacy mode OFF, or it only receives slash-commands
+        and @mentions — ordinary chat never reaches it and the friends look dead
+        while `/test` still works. Prefer a privacy-off friend; if none qualify,
+        fall back to the first and warn loudly with the fix.
+        """
+        readers = [b for b in self.bots.values() if b.can_read_all_group_messages]
+        if readers:
+            chosen = readers[0]
+        else:
+            chosen = next(iter(self.bots.values()))
+            logger.warning(
+                "No friend has Telegram privacy mode OFF — poll bot @%s will only "
+                "receive slash-commands, NOT normal chat, so the friends will look "
+                "silent. Fix: BotFather /setprivacy -> Disable, then REMOVE and "
+                "RE-ADD @%s to the group (privacy is bound at join time).",
+                chosen.username, chosen.username,
+            )
+        logger.info(
+            f"Poll bot: {chosen.name} (@{chosen.username}), "
+            f"privacy mode {'OFF' if chosen.can_read_all_group_messages else 'ON'}"
+        )
+        return chosen
+
     async def poll_and_respond(self):
         """Main loop: poll for messages + periodically let bots initiate."""
-        poll_bot = next(iter(self.bots.values()))
+        poll_bot = self._select_poll_bot()
         poll_interval = self.global_config.get("poll_interval", 2)
 
         logger.info("Starting message polling...")
