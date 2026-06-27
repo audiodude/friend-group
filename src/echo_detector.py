@@ -26,6 +26,28 @@ def _ngrams(words: list[str], n: int) -> set[tuple[str, ...]]:
     return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
 
 
+# Punctuation/whitespace stripped from the edges when checking for a bare name.
+_NAME_EDGE_CHARS = ".,!?;:…\"'`~*()[]{}-—– \t\n\r"
+
+
+def is_name_only(proposed: str, names) -> bool:
+    """Return True if the entire message is nothing but a participant's name.
+
+    A message whose whole content is an addressee's name ("Travis.", "casey",
+    "Robin!") is a robotic chatbot tell — real people say something when they
+    address someone. Such messages get dropped so the bot stays silent rather
+    than shipping a bare name. Only exact single-name matches are flagged;
+    "Travis you good?" and "no Travis stop" are left alone.
+    """
+    if not proposed or not names:
+        return False
+    cleaned = proposed.strip(_NAME_EDGE_CHARS).lower()
+    if not cleaned:
+        return False
+    return cleaned in {n.strip(_NAME_EDGE_CHARS).lower() for n in names
+                       if n and n.strip(_NAME_EDGE_CHARS)}
+
+
 def is_echo(proposed: str, recent_messages: list[str]) -> bool:
     """Return True if `proposed` substantially overlaps any single recent message.
 

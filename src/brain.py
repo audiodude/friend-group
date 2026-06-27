@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 from .config import load_friend_soul, load_friend_memory, save_friend_memory, load_history, get_friend_names
 from .chat_history import get_chat_context, last_message_age_seconds, load_messages
-from .echo_detector import is_echo, RECENT_MESSAGES_TO_CHECK
+from .echo_detector import is_echo, is_name_only, RECENT_MESSAGES_TO_CHECK
 from .schedule import get_availability
 from .topics import (
     get_recent_topics,
@@ -108,7 +108,7 @@ CRITICAL RULES FOR HOW YOU TEXT:
 - Match the energy of the chat. If someone sends 5 words, you don't send 50.
 - NEVER use em dashes (—) or double hyphens (--). Nobody texts like that. Use periods, commas, or just start a new message.
 - Typos and shortcuts are normal. "rn", "ngl", "idk", "w/e", "tbh" etc.
-- STOP USING PEOPLE'S NAMES. This is one of the biggest chatbot tells. In real group chats, the default is NO NAME. You only type a name when (a) there are 3+ active speakers and it would be genuinely ambiguous who you're talking to, or (b) rare emphasis like "casey what" or "no stop". Look at the last 10 messages in chat — if you already know who said what from context (replies, threading, obvious referents), DO NOT type their name. Addressing someone by name in a 2-3 person exchange is robotic. If your message starts with "[name]," or sprinkles a name mid-sentence ("yeah alex that's the one"), delete the name. Over the course of many messages, you should use names in well under 1 in 5 replies. Treat a name like an exclamation mark — reserved for when it matters.
+- STOP USING PEOPLE'S NAMES. This is one of the biggest chatbot tells. In real group chats, the default is NO NAME. You only type a name when (a) there are 3+ active speakers and it would be genuinely ambiguous who you're talking to, or (b) rare emphasis like "casey what" or "no stop". Look at the last 10 messages in chat — if you already know who said what from context (replies, threading, obvious referents), DO NOT type their name. Addressing someone by name in a 2-3 person exchange is robotic. If your message starts with "[name]," or sprinkles a name mid-sentence ("yeah alex that's the one"), delete the name. Over the course of many messages, you should use names in well under 1 in 5 replies. Treat a name like an exclamation mark — reserved for when it matters. And NEVER send a message that is ONLY a name ("Travis.", "casey") — a bare name as a whole message is a robotic tell. If you address someone, actually say something to them in the same message.
 - DON'T be performatively casual either. Just be natural for YOUR character.
 - Look at the Speech Patterns section of your personality. Follow it exactly.
 - DO NOT preamble observations with "I've been thinking about X", "still thinking about Y", "honestly been thinking about Z", "been thinking about that whole [thing]", etc. This is a major AI tic. Real people don't narrate their inner monologue — they just say the thought. If you want to share an observation, share it raw. Skip "I was just thinking" / "been thinking" / "thinking about" entirely.
@@ -353,12 +353,17 @@ async def think_and_respond(
         messages = [result["message"]]
     messages = [m for m in messages if m]
 
-    # Echo filter: drop messages that parrot phrasing from recent chat
-    recent_texts = [m.text for m in load_messages(RECENT_MESSAGES_TO_CHECK) if not m.is_reaction]
+    # Echo filter: drop messages that parrot phrasing from recent chat.
+    # Name-only filter: drop messages that are nothing but a participant's name.
+    recent_msgs = [m for m in load_messages(RECENT_MESSAGES_TO_CHECK) if not m.is_reaction]
+    recent_texts = [m.text for m in recent_msgs]
+    participant_names = bot_names | {m.sender for m in recent_msgs}
     filtered = []
     for m in messages:
         if is_echo(m, recent_texts):
             logger.warning(f"[{friend_name}] Dropped echo: {m[:80]}")
+        elif is_name_only(m, participant_names):
+            logger.warning(f"[{friend_name}] Dropped name-only message: {m[:80]}")
         else:
             filtered.append(m)
     messages = filtered
@@ -635,12 +640,17 @@ async def maybe_initiate(
         messages = [result["message"]]
     messages = [m for m in messages if m]
 
-    # Echo filter: drop messages that parrot phrasing from recent chat
-    recent_texts = [m.text for m in load_messages(RECENT_MESSAGES_TO_CHECK) if not m.is_reaction]
+    # Echo filter: drop messages that parrot phrasing from recent chat.
+    # Name-only filter: drop messages that are nothing but a participant's name.
+    recent_msgs = [m for m in load_messages(RECENT_MESSAGES_TO_CHECK) if not m.is_reaction]
+    recent_texts = [m.text for m in recent_msgs]
+    participant_names = set(get_friend_names()) | {m.sender for m in recent_msgs}
     filtered = []
     for m in messages:
         if is_echo(m, recent_texts):
             logger.warning(f"[{friend_name}] Dropped echo (initiate): {m[:80]}")
+        elif is_name_only(m, participant_names):
+            logger.warning(f"[{friend_name}] Dropped name-only message (initiate): {m[:80]}")
         else:
             filtered.append(m)
     messages = filtered
