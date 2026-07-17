@@ -44,8 +44,8 @@ def load_config() -> dict:
 
 
 # Group-chat activity tuning. These are the structural knobs behind how chatty
-# the friends are. Defaults match the shipped values so a config.yaml missing
-# the "activity" section (or individual keys) behaves unchanged.
+# the friends are. Live overrides go in DATA_DIR/activity.yaml (see
+# get_activity_config); these defaults apply for any key left unset.
 DEFAULT_ACTIVITY = {
     "initiation": {
         "check_min_minutes": 3,        # low end of the random "consider initiating" interval
@@ -63,10 +63,17 @@ DEFAULT_ACTIVITY = {
 
 
 def get_activity_config() -> dict:
-    """Activity-tuning settings merged over DEFAULT_ACTIVITY, so configs missing
-    the 'activity' section or individual keys still work. Re-read live on each
-    call (load_config does no caching), so edits apply without a restart."""
-    raw = load_config().get("activity") or {}
+    """Activity-tuning settings merged over DEFAULT_ACTIVITY.
+
+    Read live from DATA_DIR/activity.yaml on every call. DATA_DIR is a *directory*
+    bind-mount, so edits (even editors that save-by-replace) are picked up on the
+    next loop — no restart, no rebuild. Missing file/section/keys fall back to the
+    defaults, so it's safe when nothing is configured."""
+    raw = {}
+    activity_path = DATA_DIR / "activity.yaml"
+    if activity_path.exists():
+        with open(activity_path) as f:
+            raw = yaml.safe_load(f) or {}
     merged = {}
     for section, defaults in DEFAULT_ACTIVITY.items():
         section_cfg = dict(defaults)

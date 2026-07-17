@@ -17,5 +17,3 @@ services:
     volumes:
       - ~/.sudomake-friends/data:/app/data
       - ~/.sudomake-friends/friends:/app/friends:ro
-      # Bind-mount config so activity-tuning edits apply live (no rebuild).
-      - ./config.yaml:/app/config.yaml:ro
