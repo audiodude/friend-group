@@ -10,7 +10,7 @@ from telegram import Bot, Update
 from telegram.error import TelegramError
 
 from .config import (
-    load_config, load_friend_config, get_friend_names,
+    load_config, load_friend_config, get_friend_names, get_activity_config,
 )
 from .chat_history import ChatMessage, append_message, load_messages, maybe_compact
 from .schedule import should_respond, get_availability
@@ -267,9 +267,14 @@ class FriendGroup:
         await asyncio.sleep(60)
 
         while True:
-            # Check every 3-8 minutes (randomized to feel natural). Frequent
+            # Re-read tuning each iteration so config.yaml edits apply live.
+            init_cfg = get_activity_config()["initiation"]
+            # Check every N-M minutes (randomized to feel natural). Frequent
             # checks keep the group chat alive instead of letting it flatline.
-            wait = random.randint(3 * 60, 8 * 60)
+            wait = random.randint(
+                int(init_cfg["check_min_minutes"] * 60),
+                int(init_cfg["check_max_minutes"] * 60),
+            )
             await asyncio.sleep(wait)
 
             try:
@@ -280,9 +285,9 @@ class FriendGroup:
                 else:
                     silence_minutes = 999
 
-                # Only try to initiate if the chat has been quiet a few minutes —
+                # Only try to initiate once the chat's been quiet this long —
                 # low enough that the group revives conversation on its own quickly.
-                if silence_minutes < 5:
+                if silence_minutes < init_cfg["silence_threshold_minutes"]:
                     continue
 
                 # Mild decay as time passes since the last human message, but with
@@ -299,7 +304,8 @@ class FriendGroup:
                     hours_since_human = (time.time() - last_human_ts) / 3600
                 else:
                     hours_since_human = 24
-                decay = max(0.5, 1.0 / (1 + hours_since_human / 12))
+                decay = max(init_cfg["decay_floor"],
+                            1.0 / (1 + hours_since_human / init_cfg["decay_divisor_hours"]))
 
                 # Pick one random bot to consider initiating
                 name = random.choice(list(self.bots.keys()))
@@ -310,12 +316,11 @@ class FriendGroup:
                 if not availability["awake"]:
                     continue
 
-                # Chattier friends initiate more. Dampener is high so the group
-                # actually gets talking; the anti-repetition guardrails in the
-                # prompt keep it from turning into noise.
-                INITIATE_DAMPENER = 1.0
+                # Chattier friends initiate more. The dampener (config) scales the
+                # whole group's initiation rate; the anti-repetition guardrails in
+                # the prompt keep higher volume from turning into noise.
                 chattiness = friend_config.get("chattiness", 0.5)
-                if random.random() > chattiness * INITIATE_DAMPENER * decay:
+                if random.random() > chattiness * init_cfg["dampener"] * decay:
                     continue
 
                 logger.info(f"{name} considering starting a conversation (quiet for {silence_minutes}min, {hours_since_human:.1f}h since human, decay={decay:.2f})...")
@@ -339,6 +344,7 @@ class FriendGroup:
                         # Trigger other bots to consider responding.
                         # The poll loop may not see this message (e.g. poll bot
                         # can't see its own sends), so we trigger directly.
+                        reply_cfg = get_activity_config()["reply"]
                         responders = []
                         for other_name, other_bot in self.bots.items():
                             if other_name == name:
@@ -346,7 +352,9 @@ class FriendGroup:
                             other_config = load_friend_config(other_name)
                             engagement = self._get_engagement_modifier(other_name)
                             if should_respond(other_config, is_bot_message=True,
-                                              engagement_modifier=engagement):
+                                              engagement_modifier=engagement,
+                                              human_dampener=reply_cfg["human_dampener"],
+                                              bot_dampener=reply_cfg["bot_dampener"]):
                                 responders.append((other_name, other_bot, other_config))
 
                         if responders:
@@ -638,6 +646,7 @@ class FriendGroup:
         self._active_tasks.clear()
 
         # Determine which friends want to respond
+        reply_cfg = get_activity_config()["reply"]
         responders = []
         for name, bot in self.bots.items():
             if is_bot_message and bot.user_id == sender_id:
@@ -650,7 +659,9 @@ class FriendGroup:
             engagement = self._get_engagement_modifier(name)
             if not should_respond(friend_config, is_bot_message=is_bot_message,
                                   mentioned=mentioned,
-                                  engagement_modifier=engagement):
+                                  engagement_modifier=engagement,
+                                  human_dampener=reply_cfg["human_dampener"],
+                                  bot_dampener=reply_cfg["bot_dampener"]):
                 if mentioned:
                     self._pending_mentions.append(PendingMention(
                         friend_name=name,

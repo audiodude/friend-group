@@ -66,7 +66,9 @@ def get_availability(friend_config: dict) -> dict:
 
 def should_respond(friend_config: dict, is_bot_message: bool = False,
                    mentioned: bool = False,
-                   engagement_modifier: float = 0.0) -> bool:
+                   engagement_modifier: float = 0.0,
+                   human_dampener: float = 0.9,
+                   bot_dampener: float = 0.9) -> bool:
     """Decide if this friend should respond right now based on schedule.
 
     engagement_modifier: 0.0-0.8 boost from recent conversation momentum.
@@ -86,9 +88,9 @@ def should_respond(friend_config: dict, is_bot_message: bool = False,
             responsiveness = 0.95
     elif is_bot_message:
         bot_reply_chance = friend_config.get("bot_reply_chance", 0.75)
-        responsiveness *= bot_reply_chance * 0.9
+        responsiveness *= bot_reply_chance * bot_dampener
     else:
-        responsiveness *= 0.9
+        responsiveness *= human_dampener
 
     # Conversation momentum — engaged bots are more likely to keep going
     responsiveness = min(0.95, responsiveness + engagement_modifier)

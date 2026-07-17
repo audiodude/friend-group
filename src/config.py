@@ -43,6 +43,40 @@ def load_config() -> dict:
     return _resolve_dict(raw)
 
 
+# Group-chat activity tuning. These are the structural knobs behind how chatty
+# the friends are. Defaults match the shipped values so a config.yaml missing
+# the "activity" section (or individual keys) behaves unchanged.
+DEFAULT_ACTIVITY = {
+    "initiation": {
+        "check_min_minutes": 3,        # low end of the random "consider initiating" interval
+        "check_max_minutes": 8,        # high end of that interval
+        "silence_threshold_minutes": 5,  # only initiate after the chat's been quiet this long
+        "dampener": 1.0,               # global multiplier on initiation chance (lower = calmer)
+        "decay_floor": 0.5,            # initiation never decays below this while the human's away
+        "decay_divisor_hours": 12.0,   # larger = slower decay as time-since-human grows
+    },
+    "reply": {
+        "human_dampener": 0.9,         # multiplier on replying to a human (non-mention)
+        "bot_dampener": 0.9,           # extra multiplier on replying to another bot
+    },
+}
+
+
+def get_activity_config() -> dict:
+    """Activity-tuning settings merged over DEFAULT_ACTIVITY, so configs missing
+    the 'activity' section or individual keys still work. Re-read live on each
+    call (load_config does no caching), so edits apply without a restart."""
+    raw = load_config().get("activity") or {}
+    merged = {}
+    for section, defaults in DEFAULT_ACTIVITY.items():
+        section_cfg = dict(defaults)
+        override = raw.get(section) or {}
+        if isinstance(override, dict):
+            section_cfg.update({k: v for k, v in override.items() if k in defaults})
+        merged[section] = section_cfg
+    return merged
+
+
 def load_friend_config(name: str) -> dict:
     friend_dir = FRIENDS_DIR / name
     config_path = friend_dir / "config.yaml"

@@ -13,6 +13,22 @@ chat:
 # How often bots check for new messages (seconds)
 poll_interval: 2
 
+# Group-chat activity tuning — how chatty the friends are. config.yaml is
+# bind-mounted (see docker-compose.yml) and re-read live, so edits here take
+# effect on the next loop with NO rebuild. Any key you omit falls back to the
+# code default. Dial DOWN to calm the chat, UP to liven it.
+activity:
+  initiation:            # bots starting conversations on their own
+    check_min_minutes: 3         # low end of the random "consider initiating" interval
+    check_max_minutes: 8         # high end of that interval
+    silence_threshold_minutes: 5 # only initiate after the chat's been quiet this long
+    dampener: 1.0                # scales the whole group's initiation rate (lower = calmer)
+    decay_floor: 0.5             # initiation never decays below this while the human's away
+    decay_divisor_hours: 12      # larger = slower wind-down as time-since-human grows
+  reply:                 # bots replying to existing messages
+    human_dampener: 0.9          # multiplier on replying to a human (non-mention)
+    bot_dampener: 0.9            # extra multiplier on replying to another bot
+
 # Friends are defined in friends/<name>/
 # Each friend directory contains:
 #   - SOUL.md    (personality, static)
