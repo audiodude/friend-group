@@ -267,8 +267,9 @@ class FriendGroup:
         await asyncio.sleep(60)
 
         while True:
-            # Check every 15-45 minutes (randomized to feel natural)
-            wait = random.randint(15 * 60, 45 * 60)
+            # Check every 3-8 minutes (randomized to feel natural). Frequent
+            # checks keep the group chat alive instead of letting it flatline.
+            wait = random.randint(3 * 60, 8 * 60)
             await asyncio.sleep(wait)
 
             try:
@@ -279,13 +280,14 @@ class FriendGroup:
                 else:
                     silence_minutes = 999
 
-                # Only try to initiate if chat has been quiet for at least 60 min
-                if silence_minutes < 60:
+                # Only try to initiate if the chat has been quiet a few minutes —
+                # low enough that the group revives conversation on its own quickly.
+                if silence_minutes < 5:
                     continue
 
-                # Decay: bots initiate less as time passes since last human message.
-                # This prevents bots from keeping the chat alive indefinitely on
-                # their own — they wind down unless a human re-engages.
+                # Mild decay as time passes since the last human message, but with
+                # a high floor so the friends keep the chat lively on their own even
+                # when the human is away — they should always have something going.
                 bot_names = set(get_friend_names())
                 recent = load_messages(limit=50)
                 last_human_ts = None
@@ -297,7 +299,7 @@ class FriendGroup:
                     hours_since_human = (time.time() - last_human_ts) / 3600
                 else:
                     hours_since_human = 24
-                decay = 1.0 / (1 + hours_since_human / 4)
+                decay = max(0.5, 1.0 / (1 + hours_since_human / 12))
 
                 # Pick one random bot to consider initiating
                 name = random.choice(list(self.bots.keys()))
@@ -308,11 +310,10 @@ class FriendGroup:
                 if not availability["awake"]:
                     continue
 
-                # Chattier friends are more likely to initiate, but apply a global
-                # dampener so even high-chattiness friends don't flood when they
-                # have nothing real to say. Decay further reduces the chance as
-                # time passes without human engagement.
-                INITIATE_DAMPENER = 0.4
+                # Chattier friends initiate more. Dampener is high so the group
+                # actually gets talking; the anti-repetition guardrails in the
+                # prompt keep it from turning into noise.
+                INITIATE_DAMPENER = 1.0
                 chattiness = friend_config.get("chattiness", 0.5)
                 if random.random() > chattiness * INITIATE_DAMPENER * decay:
                     continue

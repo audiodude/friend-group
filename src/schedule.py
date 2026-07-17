@@ -86,9 +86,9 @@ def should_respond(friend_config: dict, is_bot_message: bool = False,
             responsiveness = 0.95
     elif is_bot_message:
         bot_reply_chance = friend_config.get("bot_reply_chance", 0.75)
-        responsiveness *= bot_reply_chance * 0.8
+        responsiveness *= bot_reply_chance * 0.9
     else:
-        responsiveness *= 0.75
+        responsiveness *= 0.9
 
     # Conversation momentum — engaged bots are more likely to keep going
     responsiveness = min(0.95, responsiveness + engagement_modifier)
