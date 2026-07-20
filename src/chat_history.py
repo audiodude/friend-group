@@ -12,6 +12,9 @@ from .config import DATA_DIR
 CHAT_PATH = DATA_DIR / "CHAT.jsonl"
 CHAT_SUMMARY_PATH = DATA_DIR / "CHAT_SUMMARY.md"
 
+# How much of a replied-to message to quote when rendering "(replying to ...)".
+REPLY_SNIPPET_CHARS = 60
+
 
 @dataclass
 class ChatMessage:
@@ -22,13 +25,32 @@ class ChatMessage:
     reply_to: int = 0    # telegram message id being replied to
     is_reaction: bool = False  # emoji reaction, not a text message
 
-    def display(self) -> str:
+    def display(self, by_id: "dict[int, ChatMessage] | None" = None) -> str:
+        """Render this message for the LLM's chat context.
+
+        `by_id` maps message_id -> message for the surrounding window. When the
+        replied-to message is in there, name its sender and quote it instead of
+        emitting a bare "msg:12345" — resolving a numeric ID against the log is
+        an indirection models get wrong, which reads as the friends being
+        confused about who was being addressed. Falls back to the ID when the
+        target has scrolled out of the window.
+        """
+        ref = (by_id or {}).get(self.reply_to) if self.reply_to else None
+
+        def _target() -> str:
+            if ref is None:
+                return f"msg:{self.reply_to}"
+            snippet = " ".join(ref.text.split())
+            if len(snippet) > REPLY_SNIPPET_CHARS:
+                snippet = snippet[:REPLY_SNIPPET_CHARS].rstrip() + "..."
+            return f'{ref.sender}: "{snippet}"'
+
         if self.is_reaction:
-            return f"{self.sender} reacted {self.text} to msg:{self.reply_to}"
+            return f"{self.sender} reacted {self.text} to {_target()}"
         id_tag = f"[msg:{self.message_id}]" if self.message_id else ""
         prefix = f"{id_tag}[{self.sender}]"
         if self.reply_to:
-            prefix += f" (replying to msg:{self.reply_to})"
+            prefix += f" (replying to {_target()})"
         return f"{prefix}: {self.text}"
 
 
@@ -78,9 +100,10 @@ def get_chat_context(limit: int = 50) -> str:
 
     messages = load_messages(limit)
     if messages:
+        by_id = {m.message_id: m for m in messages if m.message_id}
         parts.append("## Recent messages")
         for msg in messages:
-            parts.append(msg.display())
+            parts.append(msg.display(by_id))
 
     return "\n".join(parts) if parts else "(No chat history yet)"
 
@@ -103,7 +126,8 @@ async def maybe_compact(client: anthropic.AsyncAnthropic, model: str,
     recent_lines = lines[split_at:]
 
     old_messages = [ChatMessage(**json.loads(l)) for l in old_lines]
-    old_text = "\n".join(m.display() for m in old_messages)
+    old_by_id = {m.message_id: m for m in old_messages if m.message_id}
+    old_text = "\n".join(m.display(old_by_id) for m in old_messages)
 
     # Load existing summary to incorporate
     existing_summary = ""
