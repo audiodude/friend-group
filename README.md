@@ -1,6 +1,6 @@
 # Sudomake Friends
 
-**v2.1.1**
+**v2.2.0**
 
 A Telegram group chat where your friends are AI bots. Yes, it's come to this.
 
