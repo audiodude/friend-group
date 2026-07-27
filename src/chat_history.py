@@ -151,6 +151,7 @@ Write a concise summary (max 500 words). Focus on what would be useful context f
     response = await client.messages.create(
         model=model,
         max_tokens=1024,
+        thinking={"type": "disabled"},  # keep content[0] the summary text, not a thinking block
         messages=[{"role": "user", "content": prompt}],
     )
 

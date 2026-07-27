@@ -57,7 +57,21 @@ def _load_prompt(filename: str) -> str:
     return (_PROMPTS_DIR / filename).read_text(encoding="utf-8")
 
 
-DECIDE_AND_RESPOND_PROMPT = _load_prompt("decide_and_respond.md")
+def _split_cached_prompt(raw: str) -> tuple[str, str]:
+    """Split a prompt on the ===RULES=== sentinel into (context, rules).
+
+    The context half carries the per-call {placeholders} (name, soul, chat, ...)
+    and is formatted per request. The rules half is byte-identical for every
+    friend and every turn, so it goes in a cached `system` block — the friends
+    re-send ~6K tokens of identical rules on every reply, and caching serves
+    that prefix at ~10% cost instead of full price."""
+    context, sep, rules = raw.partition("\n===RULES===\n")
+    if not sep:
+        raise ValueError("prompt is missing the ===RULES=== cache boundary")
+    return context.rstrip(), rules.strip()
+
+
+_DECIDE_CONTEXT, _DECIDE_RULES = _split_cached_prompt(_load_prompt("decide_and_respond.md"))
 
 
 async def think_and_respond(
@@ -114,7 +128,7 @@ async def think_and_respond(
     else:
         link_preview_block = ""
 
-    prompt = DECIDE_AND_RESPOND_PROMPT.format(
+    prompt = _DECIDE_CONTEXT.format(
         name=friend_name,
         soul=soul,
         personality_dials=_describe_dials(friend_config),
@@ -152,6 +166,13 @@ async def think_and_respond(
     response = await client.messages.create(
         model=model,
         max_tokens=1024,
+        # Keep thinking off: models like Sonnet 5 default it ON, which makes
+        # content[0] an (empty) thinking block and breaks the JSON parse below.
+        thinking={"type": "disabled"},
+        # The rules block is identical across friends/turns — cache it so the
+        # ~6K-token prefix is billed at ~10% on reads instead of full price.
+        system=[{"type": "text", "text": _DECIDE_RULES,
+                 "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": content}],
     )
 
@@ -331,6 +352,7 @@ async def maybe_initiate(
     response = await client.messages.create(
         model=model,
         max_tokens=512,
+        thinking={"type": "disabled"},  # see note in think_and_respond
         messages=[{"role": "user", "content": prompt}],
     )
 

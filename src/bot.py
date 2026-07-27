@@ -94,7 +94,7 @@ class FriendGroup:
         self.claude = anthropic.AsyncAnthropic(
             api_key=self.global_config["anthropic_api_key"]
         )
-        self.model = self.global_config.get("model", "claude-haiku-4-5")
+        self.model = self.global_config.get("model", "claude-sonnet-5")
         self.bots: dict[str, FriendBot] = {}
         self._bot_user_ids: set[int] = set()
         self._last_update_id: int = 0
