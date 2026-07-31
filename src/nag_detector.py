@@ -12,6 +12,7 @@ import time
 import anthropic
 
 from .chat_history import load_messages
+from .usage import log_usage
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ async def detect_nag_pileons(
             max_tokens=300,
             messages=[{"role": "user", "content": CLASSIFY_PROMPT.format(messages=formatted)}],
         )
+        log_usage("nag_detect", CLASSIFIER_MODEL, response.usage)
         raw = response.content[0].text.strip()
     except Exception as e:
         logger.warning(f"nag detector call failed, skipping: {e}")

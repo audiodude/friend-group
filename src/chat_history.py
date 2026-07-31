@@ -8,6 +8,7 @@ from pathlib import Path
 import anthropic
 
 from .config import DATA_DIR
+from .usage import log_usage
 
 CHAT_PATH = DATA_DIR / "CHAT.jsonl"
 CHAT_SUMMARY_PATH = DATA_DIR / "CHAT_SUMMARY.md"
@@ -154,6 +155,7 @@ Write a concise summary (max 500 words). Focus on what would be useful context f
         thinking={"type": "disabled"},  # keep content[0] the summary text, not a thinking block
         messages=[{"role": "user", "content": prompt}],
     )
+    log_usage("compact", model, response.usage)
 
     summary = response.content[0].text
     CHAT_SUMMARY_PATH.write_text(summary)

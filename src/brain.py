@@ -22,6 +22,7 @@ from .topics import (
     record_complaint,
 )
 from .news import load_friend_news
+from .usage import log_usage
 from .memory_validator import validate_memory
 from .nag_detector import render_overasked_block
 
@@ -175,6 +176,7 @@ async def think_and_respond(
                  "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": content}],
     )
+    log_usage(f"decide:{friend_name}", model, response.usage)
 
     raw = response.content[0].text.strip()
 
@@ -355,6 +357,7 @@ async def maybe_initiate(
         thinking={"type": "disabled"},  # see note in think_and_respond
         messages=[{"role": "user", "content": prompt}],
     )
+    log_usage(f"initiate:{friend_name}", model, response.usage)
 
     raw = response.content[0].text.strip()
     if raw.startswith("```"):

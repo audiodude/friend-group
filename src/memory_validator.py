@@ -6,6 +6,8 @@ import re
 
 import anthropic
 
+from .usage import log_usage
+
 logger = logging.getLogger(__name__)
 
 VALIDATOR_MODEL = "claude-haiku-4-5-20251001"
@@ -59,6 +61,7 @@ async def validate_memory(
             max_tokens=200,
             messages=[{"role": "user", "content": prompt}],
         )
+        log_usage("memory_validate", VALIDATOR_MODEL, response.usage)
         raw = response.content[0].text.strip()
     except Exception as e:
         logger.warning(f"[{friend_name}] memory validator call failed, allowing write: {e}")
